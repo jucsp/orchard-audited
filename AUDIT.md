@@ -5,6 +5,9 @@ Registro de cada versión del upstream [sfg5453/orchard](https://github.com/sfg5
 | Versión upstream | Commit | Fecha revisión | Resultado | Release del fork |
 | --- | --- | --- | --- | --- |
 | `1.0.0-canary.9` | `aa900002d0541ce6bd7beab8d6011a05d181daaa` | 2026-10-15 | Línea base del fork, con hallazgos a corregir en el fork (§1.4) y bloqueo de licencia para publicar binarios (L1) | Pendiente (HU-ORCH-05) |
+| `upstream/main` (rama, no tag) | `3c8acc1e1e397a5934918c84accfa7bbb1313ab2` | 2026-10-16 | Revisión estática del diff vs tag: **sin malware**; no promovida (espera tag y HU-ORCH-02/03). Informe en §4 | — |
+
+> El monitor del upstream (REQ-M1) vigila **tags/releases**. `upstream/main` es una rama móvil y no sustituye a `1.0.0-canary.9` como "última versión registrada" para el monitor; su revisión queda documentada en §4 a efectos de trazabilidad y de cara a la próxima promoción (SDD §7).
 
 ---
 
@@ -98,4 +101,100 @@ Diferencias con lo observado al redactar el contrato: no hay build Linux ARM64 n
 
 - Firma en CI o fuera de CI (REQ-A5): pendiente, HU-ORCH-05.
 - Origen de canal y manifiestos (GitHub Releases o Pages, REQ-U2): pendiente, HU-ORCH-02.
-- Resolución de L1: pendiente del propietario.
+- Resolución de L1: **resuelto en `upstream/main`** por la relicencia del motor a PolyForm Shield 1.0.0 (§4.6). El fork debe conservar el `Required Notice` y confirmar con el propietario la interpretación de la cláusula Noncompete antes de publicar binarios (HU-ORCH-05).
+
+---
+
+## 4. Informe de auditoría `upstream/main` (diff `v1.0.0-canary.9` → `main`)
+
+- **Rama auditada:** `upstream/main` → `3c8acc1e1e397a5934918c84accfa7bbb1313ab2` (2026-10-16 03:24 UTC, "Unify music catalogs and improve artist pages and playback recovery").
+- **Base comparada:** tag `v1.0.0-canary.9` → `aa900002d0541ce6bd7beab8d6011a05d181daaa`.
+- **Método:** revisión estática del diff (`ahead_by = 30` commits), con lectura directa del código nuevo en `services/account/`, `providers/apple-music/`, `scripts/performance/`, workflows de CI y archivos de licencia. **No** se recompiló ni se ejecutó YARA en esta pasada (ver §4.2).
+- **Superficie del diff:** catálogo unificado YouTube/Apple Music (desktop y Android), proveedor Apple Music nuevo, dos endpoints nuevos del backend de cuenta (tokens Apple Music y traducción de letras en nube), relicencia del motor de mezcla adaptativa a PolyForm Shield, muestreador de procesos para perfiles y cambios grandes de UI. **`bootstrapper/` no cambió** (ninguno de los 30 commits lo toca).
+
+### 4.1 Verdicto malware / puertas traseras / ofuscación
+
+**Limpio.** No se halló malware, puerta trasera, exfiltración ni código ofuscado de autoría del proyecto en el código nuevo.
+
+- El único código ofuscado que se ejecuta es **de YouTube y pre-existente** (no introducido en este diff): el intérprete de BotGuard y la función de descifrado `nsig` del reproductor se ejecutan con `new Function(...)` en `providers/youtube/src/playback/webPoMinter.js:30` y `providers/youtube/src/runtime/player.js:53`. Es inherente a la integración con YouTube; los argumentos se pasan como valores (sin interpolación de cadenas) y corre dentro del runtime del proveedor. No es malware, pero es una superficie de ejecución de código de terceros (H6).
+- Los archivos nuevos revisados (`services/account/src/apple.js`, `translation.js`, `translation_inference.js`, `scripts/performance/sample_processes.py`, `providers/apple-music/src/*`) **no** usan `eval`, `child_process`, `exec`, `spawn` ni llamadas al sistema: solo E/S local (el muestreador lee `/proc`/sysfs y escribe en `build/performance/`; los Workers usan D1/R2/AI) y red hacia las APIs declaradas en §4.3.
+- `services/account/wrangler.toml` es una plantilla con valores `replace-with-*`; la configuración real (dominio, buckets, secretos) vive en un JSONC ignorado por git. No hay secretos reales en el repo.
+- Los commits siguen **sin firma GPG** (verificación `unsigned`), igual que el tag base; no es una regresión.
+
+### 4.2 Qué NO se verificó
+
+| Elemento | Motivo |
+| --- | --- |
+| Recompilación y hashes de artefactos | No se ejecutó build propio ni comparación byte a byte; pendiente si se promueve (SDD §7) |
+| YARA sobre binarios | No aplicable en revisión estática |
+| QtWebEngine/Chromium, `models/`, `vendor/`, `third_party/` | Misma limitación que §1.2 |
+| Comportamiento real de `depot.sfg545.dev` y claves del autor | Fuera del control del auditor; `bootstrapper/` no cambió |
+| UI de Android/desktop (QML/Kotlin) | Revisada por muestreo y por mensajes de commit, no línea a línea |
+
+### 4.3 Servicios externos y backend del autor
+
+#### Backend del autor (Cloudflare Workers y almacenamiento)
+
+| Componente | Host / endpoint | Qué envía o hace | ¿Nuevo en main? |
+| --- | --- | --- | --- |
+| Cuenta Orchard (`services/account/`) | `account.sfg545.dev` | Autenticación Google OAuth + PKCE, sesiones JWT, registro de dispositivos (`/devices`, máx. 50), refresh tokens con rotación y detección de robo | No (ampliado) |
+| Tokens Apple Music | `account.sfg545.dev/apple/developer-token` | Emite developer token ES256 (60 días) firmado con `APPLE_MUSIC_PRIVATE_KEY` del autor; requiere sesión; 150/día/cuenta + 5/min/cuenta; `origin` restringido a `appassets.androidplatform.net` | **Sí** |
+| Traducción de letras en nube | `account.sfg545.dev/lyrics/translate` | Recibe `song_id` + líneas (≤48 KB), traduce con Cloudflare AI, cuota 10 canciones/día por cuenta **y** por IP (trigger SQLite), caché 90 días, IP hasheada | **Sí** |
+| Artwork | `artwork.sfg545.dev` + Backblaze B2 | Sube/sirve artwork (WebP), fuentes | No |
+| Soporte | `/support/reports` + R2 | Reportes de bugs con subida de capturas, sincroniza con issues de GitHub (webhook + `api.github.com`) | No |
+| Connect | `/connect/hub` (Durable Object) + `rtc.live.cloudflare.com` | Señalización/presencia P2P; TURN opcional de Cloudflare Realtime | No |
+| Last.fm proxy | `lastfm.sfg545.dev` | Proxy de scrobbling a Last.fm | No |
+| Actualizador escritorio | `depot.sfg545.dev` | `releases/<canal>.json` y manifiestos firmados (`orchard-signed-v1`) | No (sin cambios) |
+| Actualizador Android | `downloads.sfg545.dev` + `api.github.com` | Metadatos de versión | No (sin cambios) |
+
+#### Proveedores de contenido
+
+| Proveedor | Hosts | Observación |
+| --- | --- | --- |
+| YouTube | `music.youtube.com`, `www.youtube.com`, `ytjs.googlevideo.com`, `www.youtube.com/generate_204` (check conectividad), BotGuard/`GenerateIT` vía `bgutils-js` | Pre-existente; se añade lectura de la etiqueta "Made with AI" (§4.4) |
+| **Apple Music (nuevo)** | `api.music.apple.com` (API con developer token), `amp-api.music.apple.com` (web/editorial con web token), `music.apple.com` (web token + MusicKit JS), `appassets.androidplatform.net` (origin del WebView Android) | Proveedor Node nuevo `providers/apple-music/` (AGPL-3.0-or-later). El host posee el token de usuario y las claves; el developer token lo emite el backend del autor |
+| Qobuz | (existente, `providers/qobuz`) | Sin cambios observados |
+| Gemini local (desktop) | `generativelanguage.googleapis.com` | Traducción on-device con clave del usuario (pre-existente), distinta de la traducción en nube del backend |
+
+Otros terceros (no autor): `oauth2.googleapis.com` (Google OAuth), `itunes.apple.com/lookup` (artwork), `api.github.com` (issues).
+
+### 4.4 Telemetría y comportamiento de red nuevo
+
+- **No hay SDK de telemetría** nuevo (Sentry/Analytics) en el código nuevo revisado. No se hallaron rastreadores añadidos en los Workers de cuenta, el proveedor Apple Music ni el muestreador de procesos.
+- El Worker de cuenta activa `[observability] enabled = true` (logs/traces de Cloudflare): telemetría **del backend**, no del cliente.
+- **Nuevo — flagging de canciones IA** (commit `c18c1217`): desktop consulta en segundo plano la pista actual y la cola a YouTube para leer la etiqueta "Made with AI" y cachea veredictos en `ai-labels.sqlite`; Android consulta la pista actual + las 3 siguientes y guarda en la base de veredictos. El detector de audio "fakeprint" pasa a **opt-in** ("Audio AI analysis (deprecated)"). No exfiltra datos propios, pero es tráfico de red en segundo plano relevante para INV-6 (H7).
+- **Nuevo — traducción en nube**: al usar la función, las letras (`song_id` + líneas) salen del dispositivo hacia `account.sfg545.dev` y Cloudflare AI. Requiere sesión, tiene cuotas y la IP se guarda solo como hash durante el procesamiento. Es un envío de datos con consentimiento implícito por uso (H8).
+- **Nuevo — Apple Music**: el sign-in MusicKit JS corre en un WebView (Android) restringido a la pantalla de inicio de sesión; el Music User Token se cifra con Android Keystore y "disconnect" borra solo las cookies/storage de Apple.
+
+### 4.5 Estado del actualizador
+
+- **Sin cambios respecto al tag.** `bootstrapper/src/update/ReleaseClient.hpp:19` sigue fijando `kDefaultServer = "https://depot.sfg545.dev/"`, con `--background-update` lanzado sin confirmación y clave de confianza `orchard-release-1`. H1 y H2 siguen abiertos; HU-ORCH-02 y HU-ORCH-03 siguen siendo necesarias tal cual.
+- El updater Android (`mobile/.../UpdateManager.kt`) tampoco cambió en el diff: `downloads.sfg545.dev` + releases del upstream (H4).
+
+### 4.6 Licencia: OOL-1.0 → PolyForm Shield 1.0.0
+
+- `LICENSE-OOL` (Orchard-Only License 1.0) **se elimina** y se añade `LICENSE-POLYFORM-SHIELD` (PolyForm Shield License 1.0.0) con `Required Notice: Copyright (C) 2026 SFG545` y `Licensor Line of Business: Orchard music player and its adaptive mix engine`.
+- `LICENSE-EXCEPTION.md` se actualiza: permite combinar las partes AGPL con el motor bajo PolyForm Shield; el Corresponding Source AGPL no necesita incluir el motor.
+- **Consecuencia para el fork:** la limitación **L1 (§1.6) queda resuelta**. El fork puede compilar y distribuir el motor adaptativo (Adaptive mix / Best Mix) siempre que no sea un "producto que compite" (cláusula Noncompete). Un fork de auditoría que distribuye el mismo Orchard no se comercializa como sustituto, pero **debe** conservar el `Required Notice` y la línea `Licensor Line of Business`. Confirmar con el propietario antes de HU-ORCH-05.
+- `README.md` del upstream se actualiza en la sección de licencia para reflejar PolyForm Shield en lugar de OOL-1.0; `THIRD_PARTY_NOTICES.md` **no cambió** en este diff (mismo SHA que el tag).
+
+### 4.7 Hallazgos nuevos
+
+| ID | Severidad | Hallazgo | Estado | HU / acción |
+| --- | --- | --- | --- | --- |
+| H6 | Media | Ejecución de JS de terceros (YouTube BotGuard + `nsig`) vía `new Function` en el proveedor YouTube (pre-existente, ahora documentado) | Abierto (aceptado) | Documentar en el fork; no mitigable sin romper YouTube |
+| H7 | Baja | Flagging IA: búsquedas en segundo plano a YouTube y caché local (`ai-labels.sqlite` / base de veredictos) | Abierto | INV-6; opcional desactivar por defecto en el fork |
+| H8 | Baja | Traducción en nube envía letras + `song_id` al backend del autor y a Cloudflare AI | Aceptado (con cuotas y hash de IP) | Documentado §4.4 |
+| H9 | Baja | El autor custodia `APPLE_MUSIC_PRIVATE_KEY` y emite los developer tokens desde su Worker | Aceptado (acotado por sesión + cuotas) | Vigilar cambios en `/apple/developer-token` (REQ-M4) |
+| H10 | Info | Las variantes Android "Canary fast" (no-debuggable, sin R8/shrinking, x86_64 para emulador) son flavours de Gradle en `mobile/android`, no cambios de CI. Los workflows (`.github/`) **no cambiaron** en el diff (subárbol idéntico al tag); §2 sigue vigente | Abierto | Solo relevante si SDD §9 (Android) se activa |
+| H11 | Baja | El `README.md` de `main` sigue apuntando a `github.com/SFG5453/orchard-v4` para clonar/issues (L2 sin resolver) | Abierto | Confirmar repo canónico en HU-ORCH-04 |
+
+### 4.8 Recomendación técnica
+
+**Contener (no promover todavía), no por malware sino por proceso.** El código nuevo está limpio y es coherente con el proyecto; no hay backdoor ni exfiltración. Los motivos para no promover `main` ahora son:
+
+1. **No hay tag nuevo**: `main` es una rama móvil y el proceso del fork (SDD §7) exige promover un tag auditado, no un commit de rama.
+2. **El auto-update sigue apuntando a `depot.sfg545.dev`** (§4.5). Hasta aplicar HU-ORCH-02 y HU-ORCH-03, incorporar `main` conservaría la descarga/instalación sin confirmación.
+3. **Revisión de UI parcial** (§4.2): los cambios grandes de QML/Kotlin se revisaron por muestreo; conviene una pasada completa sobre el tag estable.
+
+Acción recomendada cuando el upstream publique un tag estable: repetir esta revisión sobre el tag, reaplicar los commits `audit-fork:` (UPSTREAM.md), ejecutar HU-ORCH-02/03 y proceder con HU-ORCH-05. **La relicencia a PolyForm Shield desbloquea la publicación de binarios con el motor adaptativo** (L1 resuelto), siempre conservando el `Required Notice` y sin posicionar el fork como producto competidor.
