@@ -201,6 +201,10 @@ jobs:
           key: orchard-windows-msvc-qt6112-v1-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
             orchard-windows-msvc-qt6112-v1-
+      - name: Set up NSIS
+        uses: nsis-dev/setup-nsis@99783963764acafc24a5e3335ddfce26d03c20a2 # v1.2.1
+        with:
+          version: 'latest'
       - name: Install build tools
         shell: pwsh
         run: |
@@ -208,15 +212,18 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           rustup update stable
           if (!(Get-Command ccache.exe -ErrorAction SilentlyContinue)) { choco install ccache --yes --no-progress }
+          # NSIS viene del step dedicado setup-nsis; Chocolatey queda solo como
+          # fallback silencioso si makensis.exe no está disponible en PATH.
           if (!(Get-Command makensis.exe -ErrorAction SilentlyContinue)) {
-            choco install nsis --yes --no-progress
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            choco install nsis --yes --no-progress --limit-output
+            if ($LASTEXITCODE -ne 0) { Write-Warning 'NSIS Chocolatey fallback failed; relying on setup-nsis action' }
           }
       - name: Prepare Windows installer compiler
         shell: pwsh
         run: |
           $nsisCandidates = @(
             (Get-Command makensis.exe -ErrorAction SilentlyContinue).Source
+            "$env:NSISDIR\makensis.exe"
             "$env:ProgramFiles\NSIS\makensis.exe"
             "${env:ProgramFiles(x86)}\NSIS\makensis.exe"
           )
