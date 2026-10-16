@@ -48,9 +48,9 @@ class UpdateManager(
     private val isBetaEnabled: () -> Boolean = { false },
 ) {
 
-    private val baseUrl = "https://downloads.sfg545.dev/orchard"
+    private val baseUrl = "https://github.com/jucsp/orchard-audited/releases/latest/download"
     private val jsonUrl = "$baseUrl/latest-android.json"
-    private val githubReleasesUrl = "https://api.github.com/repos/sfg5453/orchard/releases"
+    private val githubReleasesUrl = "https://api.github.com/repos/jucsp/orchard-audited/releases"
 
     private val mutableState = MutableStateFlow<UpdateState>(UpdateState.Idle)
     val state: StateFlow<UpdateState> = mutableState.asStateFlow()

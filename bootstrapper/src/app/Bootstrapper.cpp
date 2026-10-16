@@ -24,7 +24,6 @@ namespace fs = std::filesystem;
 
 namespace {
 
-constexpr std::uint64_t kCheckInterval = 6 * 60 * 60;
 // A new version that survives this long without crashing counts as healthy.
 constexpr auto kHealthWindow = std::chrono::seconds(30);
 constexpr std::uint64_t kFailuresBeforeRollback = 2;
@@ -223,20 +222,12 @@ int Bootstrapper::startAndWatch(bool allowRollback) {
 }
 
 void Bootstrapper::scheduleBackgroundUpdate(const InstallState &state) const {
-  if (!state.flag("autoUpdate", true) || unixNow() - state.number("lastCheck") < kCheckInterval)
-    return;
-  platform::SpawnOptions spawn;
-  spawn.args = {"--background-update", "--root", toUtf8(layout_.root), "--server", options_.server};
-  spawn.background = true;
-  std::error_code error;
-  const fs::path program =
-      fs::exists(layout_.bootstrapper(), error) ? layout_.bootstrapper() : platform::selfExecutable();
-  try {
-    platform::Process process = platform::spawn(program, spawn);
-    platform::releaseProcess(process);
-  } catch (const std::exception &e) {
-    log::warn(std::string("cannot start the background updater: ") + e.what());
-  }
+  // Fork change (INV-1, REQ-U5): the bootstrapper never launches a detached
+  // --background-update process on its own. The upstream build spawned one
+  // whenever the periodic check was due, which downloaded and staged a new
+  // release without user confirmation. This fork removes that implicit
+  // behaviour; updates are only fetched through explicit commands.
+  (void)state;
 }
 
 int Bootstrapper::backgroundUpdate() {

@@ -15,8 +15,10 @@
 
 namespace orchard::boot {
 
-// Release paths are relative to the depot root.
-inline constexpr const char *kDefaultServer = "https://depot.sfg545.dev/";
+// Release paths are relative to the release server root. This fork serves its
+// own signed metadata and binaries from GitHub Releases, never from the
+// upstream depot (INV-3, REQ-U2).
+inline constexpr const char *kDefaultServer = "https://github.com/jucsp/orchard-audited/releases/latest/download/";
 
 // Fetches release metadata and returns it only after the signature, hash
 // chain, channel name, version and platform all check out.

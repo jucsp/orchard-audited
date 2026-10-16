@@ -25,11 +25,11 @@ Rutas donde el fork tiene o tendrá parches. Ningún cambio del upstream las sob
 
 | Ruta | Qué protege | INV / REQ | Estado |
 | --- | --- | --- | --- |
-| `bootstrapper/src/security/TrustedKeys.cpp` | Solo la clave `orchard-fork-1` es de confianza | INV-3, REQ-U1 | _prevista_ HU-ORCH-02 |
-| `bootstrapper/src/update/` | Origen en el fork, verificación firma/SHA-256, anti-rollback, sin descarga sin confirmación | INV-1–4, REQ-U2–U8 | _prevista_ HU-ORCH-02/03 |
-| `bootstrapper/src/app/Bootstrapper.cpp` | Sin lanzamiento automático de `--background-update` | INV-1, REQ-U5 | _prevista_ HU-ORCH-03 |
+| `bootstrapper/src/security/TrustedKeys.cpp` | Solo la clave `orchard-fork-1` es de confianza | INV-3, REQ-U1 | activa |
+| `bootstrapper/src/update/` | Origen en el fork, verificación firma/SHA-256, anti-rollback, sin descarga sin confirmación | INV-1–4, REQ-U2–U8 | activa (parcial: U2 aplicado) |
+| `bootstrapper/src/app/Bootstrapper.cpp` | Sin lanzamiento automático de `--background-update` | INV-1, REQ-U5 | activa |
 | `app/src/update/`, QML de ajustes de actualización | Diálogos Sí/No e Instalar/Más tarde, canal único | INV-1–2, REQ-U4, U7 | _prevista_ HU-ORCH-03 |
-| `mobile/android/app/src/main/java/dev/sfg/orchard/mobile/UpdateManager.kt` | Updater Android hacia el fork | INV-3 | _prevista_ SDD §9 |
+| `mobile/android/app/src/main/java/dev/sfg/orchard/mobile/UpdateManager.kt` | Updater Android hacia el fork | INV-3 | activa |
 | Telemetría o red en segundo plano desactivada por el fork (H7) | Valores por defecto del fork | INV-6 | _prevista_ |
 | `.github/workflows/` | Monitor solo alerta, release solo hacia el fork, acciones por SHA | REQ-M1–M4, REQ-A1–A10 | _prevista_ HU-ORCH-04/05 |
 | `scripts/release/`, `packaging/rpm/` | Publicación y firma del fork | INV-5, REQ-A3, A10 | _prevista_ HU-ORCH-05 |
@@ -62,6 +62,8 @@ Si el rango tiene commits `rechazado`, no se rebasa: se aplican los aceptados co
 | 4 | `3ead5f1` | docs | Backlog: disparo del release del fork | REQ-A4 | HU-ORCH-05 | `backlog.md` | ❌ sin prefijo |
 | 5 | `c9fb6ad` | audit | Auditoría estática de `upstream/main` (§4 de `AUDIT.md`) | REQ-R4 | — | `AUDIT.md` | ⚠️ sin área ni `(<REQ>, <HU>)`; responsable en el asunto |
 | 6 | _pendiente_ | docs | Gobernanza de actualizaciones del upstream | INV-7, REQ-R5 | — | `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `UPSTREAM.md`, `technical_memory.md` | — |
+| 7 | _pendiente_ | trust | Sustituir la clave de confianza por `orchard-fork-1` | REQ-U1 | HU-ORCH-02 | `bootstrapper/src/security/TrustedKeys.cpp` | — |
+| 8 | _pendiente_ | updater | Servidor del fork, sin auto-update en segundo plano y Android hacia el fork | REQ-U2, U5 | HU-ORCH-02 | `bootstrapper/src/update/ReleaseClient.hpp`, `bootstrapper/src/app/Bootstrapper.cpp`, `mobile/.../UpdateManager.kt`, `mobile/.../UpdateManagerTest.kt` | — |
 
 Los commits marcados ❌/⚠️ no cumplen la convención. Corregirlos implica reescribir historial publicado (`git rebase` con reword y push forzado), así que queda a decisión del propietario; hasta entonces, `git log --grep '^audit-fork:'` no los lista y deben revisarse a mano en cada rebase.
 
@@ -76,9 +78,7 @@ Commits del upstream integrados por `cherry-pick -x` fuera de un tag completo. V
 
 | Área | Cambio | REQ | HU | Archivos previstos |
 | --- | --- | --- | --- | --- |
-| trust | Sustituir `orchard-release-1` por la clave pública `orchard-fork-1` (ECDSA P-256) | REQ-U1 | HU-ORCH-02 | `bootstrapper/src/security/TrustedKeys.cpp` |
-| updater | `kDefaultServer` hacia GitHub Releases/Pages del fork; formato `orchard-signed-v1` sin cambios | REQ-U2, U8 | HU-ORCH-02 | `bootstrapper/src/update/ReleaseClient.hpp` |
-| updater | Quitar el lanzamiento automático de `--background-update`; comprobación solo de metadatos al iniciar | REQ-U3, U5 | HU-ORCH-03 | `bootstrapper/src/app/Bootstrapper.cpp`, `bootstrapper/src/update/UpdateManager.cpp` |
+| updater | Comprobación solo de metadatos al iniciar (el lanzamiento automático ya fue eliminado) | REQ-U3 | HU-ORCH-03 | `bootstrapper/src/update/UpdateManager.cpp` |
 | updater | Diálogo Sí/No y luego Instalar/Más tarde, con versión, notas, host de origen y enlace a `AUDIT.md`; silencio de 7 días | REQ-U4, U8 | HU-ORCH-03 | `app/src/update/bootstrapper_client.cpp`, QML de ajustes de actualización |
 | updater | Canal único auditado; desactivar el cambio a canary y el rollback por cambio de canal | REQ-U7 | HU-ORCH-03 | `app/src/update/*`, `bootstrapper/src/update/*` |
 | updater | Verificación de firma, hash de manifiesto y SHA-256 por archivo; anti-rollback por `sequence` | REQ-U6 | HU-ORCH-03 | `bootstrapper/src/update/*`, `bootstrapper/src/security/*` |
@@ -87,4 +87,3 @@ Commits del upstream integrados por `cherry-pick -x` fuera de un tag completo. V
 | ci | Monitor del upstream que solo abre issues; alerta alta si cambian `TrustedKeys.cpp` o `bootstrapper/src/update/` | REQ-M1–M4 | HU-ORCH-04 | `.github/workflows/monitor-upstream.yml` |
 | ci | Pipeline de release del fork (dispatch o tag `-audited`, environment `release`, acciones por SHA, destino Releases del fork) en lugar de la publicación a R2 | REQ-A1–A9 | HU-ORCH-05 | `.github/workflows/*`, `scripts/release/` |
 | build | Spec RPM firmado con GPG del fork y validación en contenedor Fedora | REQ-A10 | HU-ORCH-05 | `packaging/rpm/` (nuevo) |
-| updater | Updater Android hacia el fork, sujeto a la decisión de SDD §9 | REQ-U3–U8 | — | `mobile/android/app/src/main/java/dev/sfg/orchard/mobile/UpdateManager.kt` |

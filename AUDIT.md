@@ -41,7 +41,7 @@ Registro de cada versión del upstream [sfg5453/orchard](https://github.com/sfg5
 | --- | --- | --- | --- |
 | N1 | **QtWebEngine / Chromium** | Su compilación no se pudo reproducir en la auditoría base; los binarios empaquetados no se compararon contra un build propio | El fork reutiliza estas dependencias de la misma forma que el upstream (Qt oficial). Riesgo aceptado y documentado |
 | N2 | **Partes del build C++** (app Qt y bootstrapper) | No se reprodujeron byte a byte en la auditoría base | El pipeline del fork (HU-ORCH-05) las compilará desde fuente y registrará SHA-256 y toolchain (REQ-A8) |
-| N3 | **Clave `orchard-release-1` y `depot.sfg545.dev`** | El auditor no controla la clave privada ni el servidor del autor; no se puede verificar qué se publicará en el futuro bajo esa clave | El fork deja de confiar en esa clave y en ese host (REQ-U1, REQ-U2, HU-ORCH-02) |
+| N3 | **Clave `orchard-release-1` y `depot.sfg545.dev`** | El auditor no controla la clave privada ni el servidor del autor; no se puede verificar qué se publicará en el futuro bajo esa clave | El fork deja de confiar en esa clave y en ese host (REQ-U1, REQ-U2). Aplicado en HU-ORCH-02 |
 | N4 | **Secretos de CI del autor** (`ORCHARD_RELEASE_PRIVATE_KEY`, `R2_*`, keystore Android) | Sin acceso | El fork usa secretos propios en el environment `release` (REQ-A4, REQ-A5) |
 | N5 | **Servicios del autor** (`account`, `lastfm`, `party`, `artwork`, `cast`, `songlinks` en `sfg545.dev`; `services/`) | Backend fuera del alcance del fork | Ver §1.5 |
 | N6 | **App Android** (`mobile/`) | Fuera de la auditoría base | Decisión abierta (SDD §9) |
@@ -67,10 +67,10 @@ Conclusión: en escritorio, quien controle `depot.sfg545.dev` y la clave `orchar
 
 | ID | Severidad | Hallazgo | Estado | HU |
 | --- | --- | --- | --- | --- |
-| H1 | Alta | Descarga en segundo plano e instalación al siguiente arranque sin confirmación (§1.3) | Abierto | HU-ORCH-03 |
-| H2 | Alta | Confianza exclusiva en la clave del autor y en `depot.sfg545.dev` | Abierto | HU-ORCH-02 |
+| H1 | Alta | Descarga en segundo plano e instalación al siguiente arranque sin confirmación (§1.3) | Parcial: disparo automático eliminado en HU-ORCH-02; falta el diálogo de 2 pasos | HU-ORCH-03 |
+| H2 | Alta | Confianza exclusiva en la clave del autor y en `depot.sfg545.dev` | Mitigado | HU-ORCH-02 |
 | H3 | Media | El cambio a canal estable instala versiones más antiguas (rollback forzado por canal) | Abierto | HU-ORCH-03 |
-| H4 | Media | Updater Android apunta a `downloads.sfg545.dev` y a releases del upstream | Abierto, sujeto a la decisión de SDD §9 | — |
+| H4 | Media | Updater Android apunta a `downloads.sfg545.dev` y a releases del upstream | Mitigado (decisión del propietario aplicada) | HU-ORCH-02 |
 | H5 | Baja | Acciones de GitHub fijadas por tag móvil (`@v4`, `@stable`) y `pip install` sin hash en `manual-desktop-build.yml` | Abierto | HU-ORCH-05 |
 
 ### 1.5 Servicios en red del autor (no son actualizaciones)

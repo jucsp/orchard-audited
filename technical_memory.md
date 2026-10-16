@@ -11,14 +11,17 @@
 - **INV-5:** La clave privada de firma (`orchard-fork-1`) no debe entrar jamás al repositorio ni a CI en texto plano.
 
 ## 3. Puntos de Intervención en el Código Base
-- `bootstrapper/src/security/TrustedKeys.cpp`: Reemplazo de la clave ECDSA P-256 de confianza por la clave pública del fork.
-- Configuración de URLs de descarga en el bootstrapper y app para apuntar a GitHub Releases del fork.
-- `.github/workflows/`: Workflows para el monitor de upstream (alerta) y el release controlado (con soporte RPM).
+- `bootstrapper/src/security/TrustedKeys.cpp`: clave ECDSA P-256 de confianza ya sustituida por `orchard-fork-1` (HU-ORCH-02).
+- `bootstrapper/src/update/ReleaseClient.hpp`: `kDefaultServer` ya apunta a GitHub Releases del fork (HU-ORCH-02).
+- `bootstrapper/src/app/Bootstrapper.cpp`: lanzamiento automático de `--background-update` ya eliminado (HU-ORCH-02).
+- `mobile/.../UpdateManager.kt`: updater Android ya apunta al fork (HU-ORCH-02).
+- `.github/workflows/`: Workflows para el monitor de upstream (alerta) y el release controlado (con soporte RPM), pendientes HU-ORCH-04/05.
 
 ## 4. Estado de auditoría
 - **Base integrada:** tag `v1.0.0-canary.9` (`aa900002d054`). Informe en `AUDIT.md` §1.
 - **`upstream/main` `3c8acc1e1e39`** (30 commits sobre el tag): revisión estática sin malware, no promovida por ser rama y porque el updater sigue en `depot.sfg545.dev` (`AUDIT.md` §4). `bootstrapper/` sin cambios en ese rango.
 - **Licencia del motor adaptativo:** OOL-1.0 en el tag (bloqueo L1); `upstream/main` lo relicencia a PolyForm Shield 1.0.0, lo que desbloquea L1 al promover un tag que lo incluya, conservando el `Required Notice`.
+- **HU-ORCH-02 aplicada:** clave `orchard-fork-1`, servidor del fork y fin del auto-update en segundo plano. `grep` sin `depot.sfg545.dev`/`downloads.sfg545.dev` en `bootstrapper/` y `mobile/`.
 
 ## 5. Gobernanza de actualizaciones del upstream
 Reglas canónicas en `AGENTS.md`; `CLAUDE.md` y `GEMINI.md` lo importan y añaden el checklist de su rol. Datos en `UPSTREAM.md`.

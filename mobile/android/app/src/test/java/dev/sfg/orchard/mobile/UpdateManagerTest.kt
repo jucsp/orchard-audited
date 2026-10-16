@@ -31,7 +31,7 @@ class UpdateManagerTest {
               "version": "1.1.0",
               "codename": "Praise Perceived",
               "versionCode": 2,
-              "apkUrl": "https://downloads.sfg545.dev/orchard/Orchard-1.1.0.apk",
+              "apkUrl": "https://github.com/jucsp/orchard-audited/releases/latest/download/Orchard-1.1.0.apk",
               "sha256": "dummyhash",
               "publishedAt": "2026-08-07T00:00:00Z",
               "releaseNotes": "## Orchard Mobile 1.1.0\n- Added release notes metadata"
@@ -43,7 +43,7 @@ class UpdateManagerTest {
         assertEquals("1.1.0", metadata.version)
         assertEquals("Praise Perceived", metadata.codename)
         assertEquals(2, metadata.versionCode)
-        assertEquals("https://downloads.sfg545.dev/orchard/Orchard-1.1.0.apk", metadata.apkUrl)
+        assertEquals("https://github.com/jucsp/orchard-audited/releases/latest/download/Orchard-1.1.0.apk", metadata.apkUrl)
         assertEquals("dummyhash", metadata.sha256)
         assertEquals("## Orchard Mobile 1.1.0\n- Added release notes metadata", metadata.releaseNotes)
     }
