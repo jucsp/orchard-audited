@@ -17,10 +17,10 @@ namespace orchard::boot {
 const std::vector<TrustedKey> &trustedKeys() {
   static const std::vector<TrustedKey> keys = [] {
     std::vector<TrustedKey> list = {
-        {"orchard-release-1", "-----BEGIN PUBLIC KEY-----\n"
-                              "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEems7pLzn6Kto06JnWQSJTTbZRCiV\n"
-                              "c7mWl98p/P0RWvcw6UEiCGe/+3Z92fUfG6cBw2ATwXq1NEnHynz34kWovA==\n"
-                              "-----END PUBLIC KEY-----\n"},
+        {"orchard-fork-1", "-----BEGIN PUBLIC KEY-----\n"
+                           "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEXLmNiToQA8rZFqLdrMw7slp/h7g+\n"
+                           "EbJZAm2uNi35pRIg0FjZ/UBU7oqtxstX//+KLi9jJbz36gFi4ohCFk1v0g==\n"
+                           "-----END PUBLIC KEY-----\n"},
     };
 #ifdef ORCHARD_BOOTSTRAP_TEST_HOOKS
     // Only the test build compiles this in; release builds trust nothing else.
