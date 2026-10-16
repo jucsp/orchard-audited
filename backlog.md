@@ -46,12 +46,12 @@ Fork de auditoría de seguridad sobre `sfg5453/orchard` para mantener un control
   - Workflow no realiza builds ni commits directos.
   - Alerta especial si cambian `TrustedKeys.cpp` o archivos del updater en upstream.
 
-### HU-ORCH-05: Pipeline de Build, Release y Empaquetado RPM
+### HU-ORCH-05: Pipeline Automatizado de Build, Release y Empaquetado RPM
 - **ID:** HU-ORCH-05
 - **Prioridad:** Alta
 - **Estimación:** 5 SP
-- **Descripción:** Replicar workflows de CI/CD para generar releases en el fork (Linux AppImage, Windows, Linux ARM64) y agregar empaquetado `.rpm` para Fedora/KDE (REQ-A2, REQ-A10). Firma GPG del RPM y entrega al instalador del sistema (`pkexec dnf`). Disparo estrictamente controlado por `workflow_dispatch` o tag `-audited` con environment `release` (REQ-A4).
+- **Descripción:** Replicar workflows de CI/CD para compilar y generar releases automáticamente en el fork (Linux AppImage, Windows, Linux ARM64) y agregar empaquetado `.rpm` para Fedora/KDE (REQ-A2, REQ-A10). Firma del RPM y generación de manifiestos firmados. Disparo 100% automatizado cada vez que se haga push/merge a la rama principal del fork (`main` o `audited`). La única acción manual será la decisión del usuario en la interfaz de la aplicación de descargar e instalar.
 - **Criterios de Aceptación:**
-  - Publicación exclusiva en releases del fork.
-  - Secretos de firma resguardados en environment con aprobación manual.
+  - Publicación automatizada en GitHub Releases del fork ante push en `main` / `audited`.
+  - Generación de artefactos AppImage, Windows y `.rpm`.
   - RPM instalable y verificado en Fedora.
