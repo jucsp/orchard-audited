@@ -25,6 +25,7 @@ import { exchangeGoogleCode, googleAuthorizeUrl } from "./google.js";
 import { HttpError, htmlPage, issuer, json, nowSeconds, readJson, requireSession } from "./http.js";
 import { ACCESS_TOKEN_AUDIENCE, publicJwk, signJwt } from "./jwt.js";
 import { createReport, getReport, isScreenshotPath, listReports, markReportRead, serveScreenshot } from "./support.js";
+import { generateRoomCode, normalizeCode, PartyRoom } from "./party.js";
 import { githubWebhook } from "./support_sync.js";
 
 export const ACCESS_TOKEN_SECONDS = 15 * 60;
@@ -300,6 +301,44 @@ function jwks(env) {
   return json({ keys: [publicJwk(env.SIGNING_KEY)] }, 200, { "cache-control": "public, max-age=3600" });
 }
 
+async function createRoom(request, env) {
+  const body = await readJson(request);
+  const code = generateRoomCode();
+  const stub = env.PARTY_ROOM.get(env.PARTY_ROOM.idFromName(code));
+  return stub.fetch(new Request(new URL("/init", request.url), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ code, hostName: body.hostName }),
+  }));
+}
+
+async function joinRoom(request, env, code) {
+  const body = await readJson(request);
+  const stub = env.PARTY_ROOM.get(env.PARTY_ROOM.idFromName(normalizeCode(code)));
+  return stub.fetch(new Request(new URL("/join", request.url), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name: body.name }),
+  }));
+}
+
+function partySocket(request, env, code) {
+  if ((request.headers.get("upgrade") || "").toLowerCase() !== "websocket") {
+    throw new HttpError(426, "upgrade_required", "Connect to a party room with a WebSocket");
+  }
+  const stub = env.PARTY_ROOM.get(env.PARTY_ROOM.idFromName(normalizeCode(code)));
+  return stub.fetch(request);
+}
+
+function partyPage(code) {
+  const room = normalizeCode(code);
+  return htmlPage(
+    "Orchard listening party",
+    `Room ${room} is a shared listening session. Open Orchard, choose "Join a listening party" and enter the code ${room}.`,
+    200,
+  );
+}
+
 async function route(request, env, ctx) {
   const { pathname } = new URL(request.url);
   const method = request.method;
@@ -326,6 +365,13 @@ async function route(request, env, ctx) {
   if (reportMatch && method === "GET" && !reportMatch[2]) return getReport(request, env, reportMatch[1]);
   if (reportMatch && method === "POST" && reportMatch[2]) return markReportRead(request, env, reportMatch[1]);
   if (method === "GET" && isScreenshotPath(pathname)) return serveScreenshot(request, env);
+  if (method === "POST" && pathname === "/rooms") return createRoom(request, env);
+  const joinMatch = pathname.match(/^\/rooms\/([A-Za-z0-9]+)\/join$/);
+  if (joinMatch && method === "POST") return joinRoom(request, env, joinMatch[1]);
+  const socketMatch = pathname.match(/^\/rooms\/([A-Za-z0-9]+)\/socket$/);
+  if (socketMatch && method === "GET") return partySocket(request, env, socketMatch[1]);
+  const partyMatch = pathname.match(/^\/party\/([A-Za-z0-9]+)$/);
+  if (partyMatch && method === "GET") return partyPage(partyMatch[1]);
   throw new HttpError(404, "not_found", "No such route");
 }
 

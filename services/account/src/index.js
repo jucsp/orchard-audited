@@ -27,6 +27,7 @@ export const SUPPORT_SWEEP_CRON = "*/10 * * * *";
 
 // Durable Object classes must be exported from the entry module.
 export { ConnectHub } from "./connect.js";
+export { PartyRoom } from "./party.js";
 
 export default {
   fetch: handleRequest,

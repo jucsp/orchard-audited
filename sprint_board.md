@@ -26,11 +26,6 @@ _(vacío)_
   - Publicación directa: el job `publish` corre sin variable ni *environment* de aprobación cuando `github.repository == 'jucsp/orchard-audited'`.
   - Pendiente: primera ejecución en Actions, firma GPG del RPM y manifiestos firmados compatibles con el bootstrapper (REQ-A9, A10).
 
-- [ ] **HU-ORCH-06: Soberanía de Servicios y Orchard Connect Propio** `[Responsable: DeepSeek Dev]`
-  - Hecho (código): `services/account/wrangler.production.jsonc` para `orchard-account` en `connect.kasper-cloud.com`; cuenta/Connect en escritorio y Android apuntan al dominio propio; auto-update off por defecto y sin sondeo periódico; `artwork.sfg545.dev` y `lastfm.sfg545.dev` neutralizados en escritorio y Android; `providers/apple-music/` no existe en este tag (N/A).
-  - Pendiente de ejecución por shell (no disponible en este agente): migraciones remotas de D1, carga de secrets `GOOGLE_CLIENT_SECRET` y `SIGNING_KEY`, y `wrangler deploy`.
-  - Fuera de alcance de esta HU (anotado): `party.sfg545.dev` (`ListeningPartyClient.kt`) y enlaces informativos `sfg545.dev/orchard`.
-
 ---
 
 ## ✅ Done
@@ -41,3 +36,11 @@ _(vacío)_
 - [x] **HU-ORCH-01: Documentación y Trazabilidad del Fork** `[Responsable: Claude PM/QA]` (README con REQ-R3, AUDIT.md y UPSTREAM.md)
 - [x] **HU-ORCH-02: Generación de Claves Propias y Desconexión Upstream** `[Responsable: DeepSeek Dev]` (clave `orchard-fork-1`, servidor del fork y fin del auto-update en segundo plano)
 - [x] **Gobernanza y Reglas del Swarm:** `AGENTS.md`, `CLAUDE.md`, `GEMINI.md` establecidos y versionados `[Responsable: Claude PM/QA]`
+- [x] **HU-ORCH-06: Soberanía de Servicios, Connect Propio y Listening Party** `[Responsable: DeepSeek Dev]`
+  - Despliegue exitoso del Cloudflare Worker `orchard-account` en `connect.kasper-cloud.com` con base de datos D1 `orchard-accounts`, secretos cargados y Durable Objects `ConnectHub` y `PartyRoom`.
+  - Servicio de Listening Party (salas compartidas) implementado y desplegado en `connect.kasper-cloud.com` con Durable Object `PartyRoom` (relay WebSocket y rooms), suite de pruebas unitarias 100% pasando (76/76 tests en `services/account`) y cliente Android `ListeningPartyClient.kt` reconfigurado al dominio propio. Verificación en vivo completada exitosamente.
+  - También cubre: cuenta/Connect en escritorio y Android apuntando al dominio propio; auto-update off por defecto y sin sondeo; `artwork.sfg545.dev` y `lastfm.sfg545.dev` neutralizados en escritorio y Android.
+- [x] **HU-ORCH-07: Atribución al Autor Original y Descargo de Responsabilidad** `[Responsable: DeepSeek Dev]` (README.md con crédito total a SFG545 y colaboradores, propósito de uso personal y privacidad, y descargo de responsabilidad)
+- [x] **HU-ORCH-08: Purga de Frontend Last.fm y Chromecast** `[Responsable: DeepSeek Dev]`
+  - Last.fm purgado de la UI de escritorio (`IntegrationsSection.ui.qml`) y móvil (`SettingsConnections.kt`, `SettingsIndex.kt`).
+  - Controles de Chromecast purgados de la UI móvil (`FrostedDevicesScreen.kt`, `SettingsPages.kt`, `SettingsIndex.kt`) tras decisión de evitar pagos a Google y priorizar app nativa de Android TV para el futuro.

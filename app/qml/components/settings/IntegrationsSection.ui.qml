@@ -34,15 +34,6 @@ ColumnLayout {
 
     SettingsSection {
         Layout.fillWidth: true
-        title: qsTr("Last.fm")
-
-        LastFm {
-            Layout.fillWidth: true
-        }
-    }
-
-    SettingsSection {
-        Layout.fillWidth: true
         title: qsTr("Spotify")
 
         Spotify {

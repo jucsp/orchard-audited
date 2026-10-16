@@ -139,12 +139,6 @@ internal fun FrostedDevicesScreenContent(
             }
             Spacer(Modifier.height(14.dp))
 
-            // Google Cast / Chromecast
-            FrostedSectionHeader(title = "Chromecast")
-            Spacer(Modifier.height(8.dp))
-            Box(Modifier.riseIn(4)) { ChromecastConnectRow() }
-            Spacer(Modifier.height(14.dp))
-
             PanelDivider()
 
             // Real-time Listening Party Hub

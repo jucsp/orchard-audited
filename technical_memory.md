@@ -22,13 +22,17 @@
 - `app/src/integrations/discord_artwork.cpp`: `artwork.sfg545.dev` ya no es host de confianza para el artwork (HU-ORCH-06).
 - `app/src/integrations/lastfm.cpp` + `mobile/.../LastfmRepository.kt`: endpoint Last.fm vacío por defecto; sin llamadas a `lastfm.sfg545.dev` (HU-ORCH-06).
 - `services/account/wrangler.production.jsonc`: config de producción del Worker propio (`orchard-account` en `connect.kasper-cloud.com`) (HU-ORCH-06).
+- `services/account/src/party.js`: Durable Object `PartyRoom` (salas de Listening Party con relay WebSocket, transferencia de host y persistencia en `ctx.storage`) + `generateRoomCode()` (HU-ORCH-06).
+- `mobile/.../social/ListeningPartyClient.kt`: `DEFAULT_SERVICE_URL` y `DEFAULT_PARTY_SERVICE_URL` apuntan a `https://connect.kasper-cloud.com` (HU-ORCH-06).
+- UI de escritorio/móvil: Last.fm purgado de `IntegrationsSection.ui.qml`, `SettingsConnections.kt` y `SettingsIndex.kt`; Chromecast purgado de `FrostedDevicesScreen.kt`, `SettingsPages.kt` y `SettingsIndex.kt` (HU-ORCH-08).
 
 ## 4. Estado de auditoría
 - **Base integrada:** tag `v1.0.0-canary.9` (`aa900002d054`). Informe en `AUDIT.md` §1.
 - **`upstream/main` `3c8acc1e1e39`** (30 commits sobre el tag): revisión estática sin malware, no promovida por ser rama y porque el updater sigue en `depot.sfg545.dev` (`AUDIT.md` §4). `bootstrapper/` sin cambios en ese rango.
 - **Licencia del motor adaptativo:** OOL-1.0 en el tag (bloqueo L1); `upstream/main` lo relicencia a PolyForm Shield 1.0.0, lo que desbloquea L1 al promover un tag que lo incluya, conservando el `Required Notice`.
 - **HU-ORCH-02 aplicada:** clave `orchard-fork-1`, servidor del fork y fin del auto-update en segundo plano. `grep` sin `depot.sfg545.dev`/`downloads.sfg545.dev` en `bootstrapper/` y `mobile/`.
-- **HU-ORCH-06 aplicada (código):** cuenta/Connect → `connect.kasper-cloud.com`; auto-update off por defecto y sin sondeo; `artwork.sfg545.dev` y `lastfm.sfg545.dev` neutralizados en escritorio y Android; `providers/apple-music/` no existe en este tag. **Despliegue del Worker pendiente de ejecución por shell** (migraciones D1, secrets y `wrangler deploy`).
+- **HU-ORCH-06 aplicada y desplegada:** cuenta/Connect → `connect.kasper-cloud.com`; auto-update off por defecto y sin sondeo; `artwork.sfg545.dev` y `lastfm.sfg545.dev` neutralizados en escritorio y Android; `providers/apple-music/` no existe en este tag. Worker `orchard-account` desplegado en `connect.kasper-cloud.com` con D1 `orchard-accounts`, secretos cargados y Durable Objects `ConnectHub` y `PartyRoom`.
+- **HU-ORCH-07/08 aplicadas:** atribución al autor original y descargo de responsabilidad en `README.md`; purga de Last.fm y Chromecast en las UIs de escritorio y móvil.
 
 ## 5. Gobernanza de actualizaciones del upstream
 Reglas canónicas en `AGENTS.md`; `CLAUDE.md` y `GEMINI.md` lo importan y añaden el checklist de su rol. Datos en `UPSTREAM.md`.
@@ -45,3 +49,10 @@ Reglas canónicas en `AGENTS.md`; `CLAUDE.md` y `GEMINI.md` lo importan y añade
 - **Deuda heredada (REQ-A6):** `pip install` sin hashes y `linuxdeploy` *continuous* sin verificar el hash en `package-linux-appimage.sh`.
 - **Backup de rol (HU-ORCH-05):** Claude (PM/QA) alcanzó rate limit (resets 6:20pm); DeepSeek Dev asumió las funciones de PM/QA e implementó/verificó el pipeline y el RPM.
 - **Deuda menor:** `docs/DEVELOPMENT.md` y `docs/BOOTSTRAPPER.md` aún enlazan a `.github/workflows/manual-desktop-build.yml` (borrado); actualizar en una HU futura.
+
+## 7. Soberanía de servicios (HU-ORCH-06) y purga de frontend (HU-ORCH-07/08)
+- **Worker propio (`orchard-account`):** desplegado en `connect.kasper-cloud.com` con base D1 `orchard-accounts`, secrets cargados (`GOOGLE_CLIENT_SECRET`, `SIGNING_KEY`, etc.) y Durable Objects `ConnectHub` y `PartyRoom`.
+- **Listening Party (salas compartidas):** implementado en `services/account/src/party.js` (Durable Object `PartyRoom` con relay WebSocket, transferencia de host, persistencia y código de sala sin caracteres ambiguos). Desplegado en `connect.kasper-cloud.com`. Suite de pruebas unitarias 100% pasando (76/76 tests en `services/account`). Cliente Android `ListeningPartyClient.kt` reconfigurado al dominio propio. Verificación en vivo completada exitosamente.
+- **Purga de Last.fm:** UI escritorio (`IntegrationsSection.ui.qml`) y móvil (`SettingsConnections.kt`, `SettingsIndex.kt`). El endpoint backend quedó neutralizado previamente en HU-ORCH-06.
+- **Purga de Chromecast (móvil):** `FrostedDevicesScreen.kt`, `SettingsPages.kt`, `SettingsIndex.kt`. Decisión: evitar pagos a Google y priorizar app nativa de Android TV en el futuro.
+- **Atribución (HU-ORCH-07):** `README.md` con crédito total a SFG545 y colaboradores, propósito de uso personal y privacidad, y descargo de responsabilidad.

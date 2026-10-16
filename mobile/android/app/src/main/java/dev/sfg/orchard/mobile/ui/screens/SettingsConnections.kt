@@ -47,7 +47,6 @@ import dev.sfg.orchard.mobile.qobuz.QobuzStatus
 /** Services listed under Connections; each opens its own detail page. */
 internal enum class ConnectionService(val title: String, val blurb: String) {
     Discord("Discord", "Share what you’re listening to"),
-    Lastfm("Last.fm", "Send now-playing updates and completed listens"),
     ListenBrainz("ListenBrainz", "Send listens with your user token"),
     Spotify("Spotify", "Canvas videos in the player"),
     Qobuz("Qobuz", "Lossless and Hi-Res audio"),
@@ -71,13 +70,6 @@ internal fun connectionStatuses(
         discordStatus is DiscordPresenceStatus.Ready -> ConnectionStatus(true, "Ready")
         discordStatus is DiscordPresenceStatus.Error -> ConnectionStatus(false, discordStatus.message)
         else -> ConnectionStatus(false, "Discord app not installed")
-    },
-    ConnectionService.Lastfm to when (lastfmState) {
-        is LastfmState.Connected -> ConnectionStatus(true, "Scrobbling on")
-        LastfmState.Connecting -> ConnectionStatus(false, "Starting browser authorization…")
-        is LastfmState.Pending -> ConnectionStatus(false, "Approve Orchard in your browser, then finish")
-        is LastfmState.Error -> ConnectionStatus(false, lastfmState.message)
-        LastfmState.SignedOut -> ConnectionStatus(false, ConnectionService.Lastfm.blurb)
     },
     ConnectionService.ListenBrainz to when (listenBrainzState) {
         is ListenBrainzState.Connected -> ConnectionStatus(true, "Connected as ${listenBrainzState.user}")
@@ -212,12 +204,6 @@ internal fun ConnectionDetail(
                     settings = settings,
                     discordStatus = discordStatus,
                     onSettings = onSettings,
-                )
-                ConnectionService.Lastfm -> LastfmSettingsCard(
-                    state = lastfmState,
-                    onConnect = onConnectLastfm,
-                    onComplete = onCompleteLastfm,
-                    onDisconnect = onDisconnectLastfm,
                 )
                 ConnectionService.ListenBrainz -> ListenBrainzSettingsCard(
                     state = listenBrainzState,

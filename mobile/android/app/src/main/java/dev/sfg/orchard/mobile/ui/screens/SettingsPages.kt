@@ -132,9 +132,6 @@ internal fun AudioPage(
     SectionLabel("AI-generated music", 8)
     SettingsPanel(index = 9) { SlopSettingsRow(settings, onSettings) }
 
-    SectionLabel("Devices", 10)
-    SettingsPanel(index = 11) { ChromecastSettingsRow() }
-
     SectionLabel("Listening history", 12)
     SettingsPanel(index = 13) {
         ToggleRow(

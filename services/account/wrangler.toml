@@ -46,9 +46,18 @@ simple = { limit = 30, period = 60 }
 name = "CONNECT_HUB"
 class_name = "ConnectHub"
 
+# Listening parties: one room per code.
+[[durable_objects.bindings]]
+name = "PARTY_ROOM"
+class_name = "PartyRoom"
+
 [[migrations]]
 tag = "connect-hub-v1"
 new_sqlite_classes = ["ConnectHub"]
+
+[[migrations]]
+tag = "party-room-v1"
+new_sqlite_classes = ["PartyRoom"]
 
 # Optional TURN relay for Connect (Cloudflare Realtime). Without these, Connect
 # uses STUN only. `wrangler secret put TURN_KEY_ID` and `TURN_KEY_API_TOKEN`.
