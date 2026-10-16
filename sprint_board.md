@@ -38,3 +38,4 @@
 - [x] Rama por defecto `audited` fijada en tag `v1.0.0-canary.9` `[Responsable: Antigravity PO]`
 - [x] Repositorio clonado localmente y remoto upstream vinculado `[Responsable: Antigravity PO]`
 - [x] Contrato SDD importado y Product Backlog inicializado `[Responsable: Antigravity PO]`
+- [x] **HU-ORCH-01: Documentación y Trazabilidad del Fork** `[Responsable: Claude PM/QA]` (README con REQ-R3, AUDIT.md y UPSTREAM.md)
