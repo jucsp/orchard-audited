@@ -97,9 +97,25 @@ Observado en `.github/workflows/` del tag. El contrato esperaba `manual-desktop-
 
 Diferencias con lo observado al redactar el contrato: no hay build Linux ARM64 ni macOS en los workflows del tag; la plataforma de escritorio publicada es Linux x86_64 y Windows x64. El fork añadirá `.rpm` (REQ-A2, REQ-A10) como formato propio y lo indicará en cada release.
 
+### 2.1 Pipeline del fork (HU-ORCH-05)
+
+`manual-desktop-build.yml` se elimina del fork: su job `publish` escribía en R2 con `ORCHARD_RELEASE_PRIVATE_KEY`. Lo sustituye `.github/workflows/release.yml`, que replica los jobs de compilación del upstream (mismos pasos, toolchain y nombres de artefacto) y cambia solo el destino. `scripts/release/publish_r2.py` queda en el árbol sin ningún workflow que lo invoque.
+
+| Workflow | Disparo | Runners | Artefactos | Secretos | Destino |
+| --- | --- | --- | --- | --- | --- |
+| `release.yml` | push a `audited`/`main`, tag `v*`, `workflow_dispatch` | `ubuntu-24.04`, contenedor `fedora:44`, `windows-2025` | `Orchard-Linux-x86_64.AppImage`, `orchard-<versión>-<run>.x86_64.rpm`, `orchard-bootstrapper`, `Orchard-Windows-x86_64.7z`, `OrchardSetup.exe`, `orchard-bootstrapper.exe`, `SHA256SUMS.txt` | Solo `GITHUB_TOKEN` (`contents: write` únicamente en `publish`) | GitHub Releases de `jucsp/orchard-audited` |
+
+- **Formato agregado por el fork:** `.rpm` (`scripts/package-linux-rpm.sh`, `packaging/rpm/orchard.spec`). Mismo AppDir del AppImage en `/opt/orchard`, enlace `/usr/bin/orchard`, `.desktop` e icono 512×512. Sin cambios de código. Los `Requires` son los sonames que el AppDir necesita y no incluye. El job `rpm-check` lo instala con `dnf` en Fedora y falla si a un ejecutable le falta una librería.
+- **Publicación directa:** el job `publish` corre cuando `github.repository == 'jucsp/orchard-audited'`, sin variable de activación ni *environment* de aprobación. Cualquier push a `audited`/`main` o tag `v*` publica directamente en GitHub Releases (REQ-A4).
+- **Disparo (REQ-A4):** el SDD pide solo `workflow_dispatch` o tag `-audited`; el backlog (`3ead5f1`) lo amplía a push en la rama principal. El workflow sigue el backlog. Un push publica un *prerelease* `v<versión>-audited.<run>` y un tag publica release `--latest` si coincide con la versión de `meson.build`. Falta corregir el SDD para reflejar el disparo por push.
+- **Firma (REQ-A5):** opción "publicar sin firmar". Ni el `.rpm` (REQ-A10, GPG) ni los manifiestos `orchard-signed-v1` se firman en CI. Las notas del release lo dicen.
+- **Consistencia con el actualizador (REQ-A9): no cumple todavía.** El bootstrapper pide `<servidor>releases/<canal>.json` y `manifests/<v>-<plataforma>.json` bajo `releases/latest/download/`. Los assets de GitHub Releases no admiten subdirectorios, así que esas rutas devuelven 404 hasta que HU-ORCH-03 defina la estructura de manifiestos.
+- **Seguridad del pipeline (REQ-A6):** acciones fijadas por SHA, `persist-credentials: false` y ninguna expresión `${{ }}` con datos del evento dentro de un `run`. Pendiente heredado del upstream: `pip install` sin lockfile ni hashes (meson, cryptography, aqtinstall por commit), y `scripts/package-linux-appimage.sh` descarga `linuxdeploy` *continuous* sin verificar el hash.
+- **Qué no se verificó:** no se ejecutó el workflow en GitHub Actions ni se compiló Orchard. El `.rpm` se probó en local (Fedora 44) con un AppDir sintético: build, `rpm -qpR`, `rpm -qpl` y `rpm -i --test`.
+
 ## 3. Decisiones del fork pendientes de registrar
 
-- Firma en CI o fuera de CI (REQ-A5): pendiente, HU-ORCH-05.
+- Firma en CI o fuera de CI (REQ-A5): publicar sin firmar en CI (§2.1). Falta definir quién firma el `.rpm` y los manifiestos fuera de CI.
 - Origen de canal y manifiestos (GitHub Releases o Pages, REQ-U2): pendiente, HU-ORCH-02.
 - Resolución de L1: **resuelto en `upstream/main`** por la relicencia del motor a PolyForm Shield 1.0.0 (§4.6). El fork debe conservar el `Required Notice` y confirmar con el propietario la interpretación de la cláusula Noncompete antes de publicar binarios (HU-ORCH-05).
 

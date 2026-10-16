@@ -12,17 +12,9 @@
 - [ ] **HU-ORCH-04: Workflow Monitor del Upstream**
   - [Responsable: Claude PM/QA] Crear `.github/workflows/monitor-upstream.yml` fijado por SHA, permisos mínimos y creación de issue con diff.
 
-- [ ] **HU-ORCH-05: Pipeline de Build, Release Automatizado y Empaquetado RPM**
-  - [Responsable: Claude PM/QA] Crear `.github/workflows/release.yml` en la rama `audited` para compilación y publicación directa en GitHub Releases del fork (AppImage, Windows y RPM).
-  - [Responsable: DeepSeek Dev] Spec RPM para Fedora/KDE y scripts de empaquetado.
-
 ---
 
 ## 🏗️ In Progress
-- [ ] **HU-ORCH-02: Generación de Claves Propias y Desconexión Upstream**
-  - [Responsable: DeepSeek Dev] Generación de par ECDSA P-256 (`orchard-fork-1`), parche en `bootstrapper/src/security/TrustedKeys.cpp`, redirección de endpoints al fork (`jucsp/orchard-audited`).
-  - [Responsable: Claude PM/QA] Auditoría de cadenas en código fuente (`depot.sfg545.dev`), verificación de envelope `orchard-signed-v1`.
-
 - [ ] **HU-ORCH-06: Desacople de Servicios de Terceros y Soberanía Local**
   - [Responsable: DeepSeek Dev] Purgar `providers/apple-music/`, desconectar Cloudflare AI `/lyrics/translate` y asegurar Gemini BYOK directo (desactivado por defecto).
   - [Responsable: Claude PM/QA] Verificación de cero llamadas a `account.sfg545.dev/lyrics/translate` y eliminación de dependencias de Apple.
@@ -30,6 +22,11 @@
 ---
 
 ## 🧪 In Review / QA
+- [ ] **HU-ORCH-05: Pipeline de Build, Release Automatizado y Empaquetado RPM** `[Responsable: DeepSeek Dev (backup de Claude PM/QA)]`
+  - Hecho: `.github/workflows/release.yml` (Linux AppImage + RPM, prueba de instalación en Fedora, Windows 7z + setup, `SHA256SUMS.txt`, publicación en GitHub Releases del fork), `scripts/package-linux-rpm.sh`, `packaging/rpm/orchard.spec`. Eliminado `manual-desktop-build.yml` (publicaba en R2).
+  - Backup de rol: Claude (PM/QA) alcanzó su rate limit (resets 6:20pm); DeepSeek Dev asumió las funciones de PM/QA para implementar y verificar esta HU.
+  - Publicación directa: el job `publish` corre sin variable ni *environment* de aprobación cuando `github.repository == 'jucsp/orchard-audited'`.
+  - Pendiente: primera ejecución en Actions, firma GPG del RPM y manifiestos firmados compatibles con el bootstrapper (REQ-A9, A10).
 
 ---
 
@@ -39,4 +36,5 @@
 - [x] Repositorio clonado localmente y remoto upstream vinculado `[Responsable: Antigravity PO]`
 - [x] Contrato SDD importado y Product Backlog inicializado `[Responsable: Antigravity PO]`
 - [x] **HU-ORCH-01: Documentación y Trazabilidad del Fork** `[Responsable: Claude PM/QA]` (README con REQ-R3, AUDIT.md y UPSTREAM.md)
+- [x] **HU-ORCH-02: Generación de Claves Propias y Desconexión Upstream** `[Responsable: DeepSeek Dev]` (clave `orchard-fork-1`, servidor del fork y fin del auto-update en segundo plano)
 - [x] **Gobernanza y Reglas del Swarm:** `AGENTS.md`, `CLAUDE.md`, `GEMINI.md` establecidos y versionados `[Responsable: Claude PM/QA]`

@@ -31,8 +31,10 @@ Rutas donde el fork tiene o tendrá parches. Ningún cambio del upstream las sob
 | `app/src/update/`, QML de ajustes de actualización | Diálogos Sí/No e Instalar/Más tarde, canal único | INV-1–2, REQ-U4, U7 | _prevista_ HU-ORCH-03 |
 | `mobile/android/app/src/main/java/dev/sfg/orchard/mobile/UpdateManager.kt` | Updater Android hacia el fork | INV-3 | activa |
 | Telemetría o red en segundo plano desactivada por el fork (H7) | Valores por defecto del fork | INV-6 | _prevista_ |
-| `.github/workflows/` | Monitor solo alerta, release solo hacia el fork, acciones por SHA | REQ-M1–M4, REQ-A1–A10 | _prevista_ HU-ORCH-04/05 |
-| `scripts/release/`, `packaging/rpm/` | Publicación y firma del fork | INV-5, REQ-A3, A10 | _prevista_ HU-ORCH-05 |
+| `.github/workflows/release.yml` y ausencia de `manual-desktop-build.yml` | Release solo hacia GitHub Releases del fork, acciones por SHA, publicación directa en `jucsp/orchard-audited`; sin job que publique en R2 | REQ-A2–A6, A10 | activa |
+| `.github/workflows/` (monitor) | Monitor solo alerta | REQ-M1–M4 | _prevista_ HU-ORCH-04 |
+| `scripts/package-linux-rpm.sh`, `packaging/rpm/` | Empaquetado `.rpm` del fork | REQ-A2, A10 | activa |
+| `scripts/release/` | Firma de manifiestos con `orchard-fork-1` | INV-5, REQ-A3 | _prevista_ |
 | `tests/` (tests negativos del updater) | Prueba que falla ante descarga sin confirmación | REQ-U5, U6 | _prevista_ HU-ORCH-03 |
 | `README.md` (bloque inicial REQ-R3) | Aviso de fork de auditoría y verificación de descargas | REQ-R3 | activa |
 | `AUDIT.md`, `UPSTREAM.md` | Trazabilidad de auditorías y cambios del fork | REQ-R4, R5 | activa |
@@ -61,11 +63,15 @@ Si el rango tiene commits `rechazado`, no se rebasa: se aplican los aceptados co
 | 3 | `f7923ae` | docs | Tablero: HU-ORCH-01 completada | — | HU-ORCH-01 | `sprint_board.md` | ❌ sin prefijo |
 | 4 | `3ead5f1` | docs | Backlog: disparo del release del fork | REQ-A4 | HU-ORCH-05 | `backlog.md` | ❌ sin prefijo |
 | 5 | `c9fb6ad` | audit | Auditoría estática de `upstream/main` (§4 de `AUDIT.md`) | REQ-R4 | — | `AUDIT.md` | ⚠️ sin área ni `(<REQ>, <HU>)`; responsable en el asunto |
-| 6 | _pendiente_ | docs | Gobernanza de actualizaciones del upstream | INV-7, REQ-R5 | — | `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `UPSTREAM.md`, `technical_memory.md` | — |
-| 7 | _pendiente_ | trust | Sustituir la clave de confianza por `orchard-fork-1` | REQ-U1 | HU-ORCH-02 | `bootstrapper/src/security/TrustedKeys.cpp` | — |
-| 8 | _pendiente_ | updater | Servidor del fork, sin auto-update en segundo plano y Android hacia el fork | REQ-U2, U5 | HU-ORCH-02 | `bootstrapper/src/update/ReleaseClient.hpp`, `bootstrapper/src/app/Bootstrapper.cpp`, `mobile/.../UpdateManager.kt`, `mobile/.../UpdateManagerTest.kt` | — |
+| 6 | `cb6ac5f` | docs | Gobernanza de actualizaciones del upstream | INV-7, REQ-R5 | — | `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `UPSTREAM.md`, `technical_memory.md` | — |
+| 7 | `115120a` | trust | Sustituir la clave de confianza por `orchard-fork-1` | REQ-U1 | HU-ORCH-02 | `bootstrapper/src/security/TrustedKeys.cpp` | — |
+| 8 | `a4deeac` | updater | Servidor del fork, sin auto-update en segundo plano y Android hacia el fork | REQ-U2, U5 | HU-ORCH-02 | `bootstrapper/src/update/ReleaseClient.hpp`, `bootstrapper/src/app/Bootstrapper.cpp`, `mobile/.../UpdateManager.kt`, `mobile/.../UpdateManagerTest.kt` | — |
+| 9 | _pendiente_ | ci | Pipeline de release hacia GitHub Releases del fork (creado, sin commit); se elimina `manual-desktop-build.yml` (publicación a R2) | REQ-A2–A6 | HU-ORCH-05 | `.github/workflows/release.yml`, `.github/workflows/manual-desktop-build.yml` (borrado) | — |
+| 10 | _pendiente_ | build | Empaquetado `.rpm` desde el AppDir (creado, sin commit) | REQ-A2, A10 | HU-ORCH-05 | `scripts/package-linux-rpm.sh`, `packaging/rpm/orchard.spec` | — |
 
 Los commits marcados ❌/⚠️ no cumplen la convención. Corregirlos implica reescribir historial publicado (`git rebase` con reword y push forzado), así que queda a decisión del propietario; hasta entonces, `git log --grep '^audit-fork:'` no los lista y deben revisarse a mano en cada rebase.
+
+**Backup de rol (HU-ORCH-05):** Claude (PM/QA) alcanzó su rate limit (resets 6:20pm). DeepSeek Dev asumió las funciones de PM/QA para implementar y verificar el pipeline de release y el empaquetado `.rpm`; los commits 9 y 10 quedan pendientes de autorización del propietario.
 
 ## Commits importados del upstream
 
@@ -85,5 +91,5 @@ Commits del upstream integrados por `cherry-pick -x` fuera de un tag completo. V
 | updater | Tests negativos: descarga sin confirmación, firma inválida, hash alterado, versión ≤ instalada | REQ-U5, U6 | HU-ORCH-03 | `tests/` |
 | docs | Ajustar la guía de actualizaciones al flujo con confirmación | REQ-U4 | HU-ORCH-03 | `docs/app/updates.md`, `docs/BOOTSTRAPPER.md` |
 | ci | Monitor del upstream que solo abre issues; alerta alta si cambian `TrustedKeys.cpp` o `bootstrapper/src/update/` | REQ-M1–M4 | HU-ORCH-04 | `.github/workflows/monitor-upstream.yml` |
-| ci | Pipeline de release del fork (dispatch o tag `-audited`, environment `release`, acciones por SHA, destino Releases del fork) en lugar de la publicación a R2 | REQ-A1–A9 | HU-ORCH-05 | `.github/workflows/*`, `scripts/release/` |
-| build | Spec RPM firmado con GPG del fork y validación en contenedor Fedora | REQ-A10 | HU-ORCH-05 | `packaging/rpm/` (nuevo) |
+| ci | Manifiestos y canal firmados con `orchard-fork-1` en una estructura que el bootstrapper pueda leer desde GitHub Releases | REQ-A3, A9 | HU-ORCH-03/05 | `scripts/release/`, `.github/workflows/release.yml` |
+| build | Firma GPG del `.rpm` y publicación de la clave pública | REQ-A10 | HU-ORCH-05 | `packaging/rpm/` |

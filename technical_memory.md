@@ -15,7 +15,8 @@
 - `bootstrapper/src/update/ReleaseClient.hpp`: `kDefaultServer` ya apunta a GitHub Releases del fork (HU-ORCH-02).
 - `bootstrapper/src/app/Bootstrapper.cpp`: lanzamiento automático de `--background-update` ya eliminado (HU-ORCH-02).
 - `mobile/.../UpdateManager.kt`: updater Android ya apunta al fork (HU-ORCH-02).
-- `.github/workflows/`: Workflows para el monitor de upstream (alerta) y el release controlado (con soporte RPM), pendientes HU-ORCH-04/05.
+- `.github/workflows/release.yml`: build Linux/Windows, `.rpm` y publicación en GitHub Releases del fork (HU-ORCH-05). `manual-desktop-build.yml` (R2) eliminado. Monitor del upstream pendiente (HU-ORCH-04).
+- `scripts/package-linux-rpm.sh` + `packaging/rpm/orchard.spec`: RPM desde el AppDir en `/opt/orchard`, `Requires` calculados con `readelf` (sonames no incluidos), `AutoReqProv: no`.
 
 ## 4. Estado de auditoría
 - **Base integrada:** tag `v1.0.0-canary.9` (`aa900002d054`). Informe en `AUDIT.md` §1.
@@ -30,3 +31,11 @@ Reglas canónicas en `AGENTS.md`; `CLAUDE.md` y `GEMINI.md` lo importan y añade
 - **Integración quirúrgica:** cada commit del rango se clasifica `aceptado`/`rechazado`/`conflicto`; se integra en `integrate/<tag>` por rebase (todo aceptado) o `cherry-pick -x` (selección).
 - **Conflictos:** detenerse, registrar la propuesta con la plantilla de `AGENTS.md` en `AUDIT.md` y esperar la decisión del propietario.
 - **Deuda de convención:** `1301e8f`, `f7923ae`, `3ead5f1` sin prefijo `audit-fork:`; `a019c98` y `c9fb6ad` con formato incompleto. Corregirlos reescribe historial y depende del propietario.
+
+## 6. Pipeline de release (HU-ORCH-05)
+- **Disparo:** push a `audited`/`main` → prerelease `v<versión>-audited.<run>`; tag `v*` → release `--latest` (el tag debe empezar por `v<versión de meson.build>`); `workflow_dispatch`.
+- **Publicación:** job `publish` con `contents: write`, directo cuando `github.repository == 'jucsp/orchard-audited'`, sin variable de activación ni `environment: release`. Usa `gh release` con `GITHUB_TOKEN`; sin secretos adicionales.
+- **Sin firmar todavía:** RPM sin GPG y sin manifiestos `orchard-signed-v1`. El bootstrapper busca `releases/<canal>.json` en `releases/latest/download/`, una ruta que GitHub Releases no sirve (assets planos). Se resuelve en HU-ORCH-03.
+- **Deuda heredada (REQ-A6):** `pip install` sin hashes y `linuxdeploy` *continuous* sin verificar el hash en `package-linux-appimage.sh`.
+- **Backup de rol (HU-ORCH-05):** Claude (PM/QA) alcanzó rate limit (resets 6:20pm); DeepSeek Dev asumió las funciones de PM/QA e implementó/verificó el pipeline y el RPM.
+- **Deuda menor:** `docs/DEVELOPMENT.md` y `docs/BOOTSTRAPPER.md` aún enlazan a `.github/workflows/manual-desktop-build.yml` (borrado); actualizar en una HU futura.
