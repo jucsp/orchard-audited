@@ -1,5 +1,5 @@
 > [!IMPORTANT]
-> **Este es un fork de auditoría de [sfg5453/orchard](https://github.com/sfg5453/orchard). No agrega funcionalidades nuevas.** Su único propósito es aumentar la seguridad: el código se revisa versión por versión antes de incorporarse, y la aplicación **no se actualiza sola**: te avisa cuando hay una versión nueva y solo la descarga si tú lo confirmas. Las descargas provienen de este repositorio, no del original.
+> **Este es un fork de auditoría de [sfg5453/orchard](https://github.com/sfg5453/orchard). No agrega funcionalidades nuevas.** Su único propósito es aumentar la seguridad y la privacidad: el código se revisa versión por versión antes de incorporarse, se eliminan telemetría y actualizadores no consentidos, y la sincronización puede apuntar a un backend propio. La aplicación **no se actualiza sola**: te avisa cuando hay una versión nueva y solo la descarga si tú lo confirmas. Las descargas provienen de este repositorio, no del original. Ver [Autoría y descargo de responsabilidad](#autoría-y-descargo-de-responsabilidad).
 
 | | |
 | :--- | :--- |
@@ -7,7 +7,7 @@
 | **Fecha de la auditoría** | 2026-10-15 |
 | **Informe de auditoría** | [AUDIT.md](AUDIT.md) |
 | **Cambios respecto del upstream** | [UPSTREAM.md](UPSTREAM.md) (commits `audit-fork:`) |
-| **Autores originales** | [SFG545](https://github.com/sfg5453) y Julian-FF2000. Todo el mérito del programa es suyo; este fork solo revisa y cambia el mecanismo de actualización. |
+| **Autores originales** | [SFG545](https://github.com/sfg5453) y Julian-FF2000. Todo el crédito de desarrollo, arquitectura, diseño y funcionalidad es suyo; este fork solo recorta la recopilación de datos, elimina telemetría y actualizadores no consentidos, y apunta la sincronización a un backend propio. |
 | **Licencia** | [AGPL-3.0-or-later](LICENSE) con [permiso adicional](LICENSE-EXCEPTION.md). El motor de mezcla adaptativa está bajo [OOL-1.0](LICENSE-OOL); ver la limitación L1 en [AUDIT.md](AUDIT.md). |
 
 **Cómo verificar una descarga.** Cada release del fork publica un archivo `SHA256SUMS` y su firma. Comprueba el hash del archivo descargado antes de ejecutarlo:
@@ -17,6 +17,16 @@ sha256sum -c SHA256SUMS --ignore-missing
 ```
 
 La firma de los manifiestos del actualizador (`orchard-signed-v1`, clave `orchard-fork-1`) y la firma GPG del `.rpm` se documentarán aquí junto con las claves públicas cuando se publique el primer release del fork. Hasta entonces **no hay binarios publicados por este fork**: los enlaces de descarga del README original que aparecen más abajo apuntan al sitio del autor (`sfg545.dev`) y no son builds auditados.
+
+---
+
+## Autoría y descargo de responsabilidad
+
+**Crédito total al autor original.** Todo el crédito de desarrollo, arquitectura, diseño y funcionalidad del reproductor Orchard pertenece íntegramente a [SFG545](https://github.com/sfg5453) y sus colaboradores en el repositorio oficial [sfg5453/orchard](https://github.com/sfg5453/orchard). Este fork no pretende atribuirse ninguna parte del desarrollo de la aplicación base.
+
+**Propósito de uso personal y privacidad.** Este proyecto es exclusivamente un fork para uso personal. Su único propósito es recortar la recopilación de datos hacia servicios de terceros, eliminar telemetría y actualizadores automáticos no consentidos, y permitir la sincronización mediante un backend autoalojado propio.
+
+**Descargo de responsabilidad.** El software se provee tal cual, para uso privado y sin garantía de ningún tipo, en la medida permitida por la ley. Antes de usarlo, revisa y apoya el repositorio y el proyecto del autor original en [sfg5453/orchard](https://github.com/sfg5453/orchard).
 
 ---
 
