@@ -17,12 +17,18 @@
 - `mobile/.../UpdateManager.kt`: updater Android ya apunta al fork (HU-ORCH-02).
 - `.github/workflows/release.yml`: build Linux/Windows, `.rpm` y publicación en GitHub Releases del fork (HU-ORCH-05). `manual-desktop-build.yml` (R2) eliminado. Monitor del upstream pendiente (HU-ORCH-04).
 - `scripts/package-linux-rpm.sh` + `packaging/rpm/orchard.spec`: RPM desde el AppDir en `/opt/orchard`, `Requires` calculados con `readelf` (sonames no incluidos), `AutoReqProv: no`.
+- `app/src/account/orchard_account.cpp` + `mobile/.../OrchardAccountService.kt`: servicio de cuenta/Connect apunta a `https://connect.kasper-cloud.com` (HU-ORCH-06).
+- `app/src/update/bootstrapper_client.{h,cpp}`: `m_autoUpdate` falso por defecto y sin sondeo periódico; el timer solo corre durante una actualización solicitada (INV-1, REQ-U5, HU-ORCH-06).
+- `app/src/integrations/discord_artwork.cpp`: `artwork.sfg545.dev` ya no es host de confianza para el artwork (HU-ORCH-06).
+- `app/src/integrations/lastfm.cpp` + `mobile/.../LastfmRepository.kt`: endpoint Last.fm vacío por defecto; sin llamadas a `lastfm.sfg545.dev` (HU-ORCH-06).
+- `services/account/wrangler.production.jsonc`: config de producción del Worker propio (`orchard-account` en `connect.kasper-cloud.com`) (HU-ORCH-06).
 
 ## 4. Estado de auditoría
 - **Base integrada:** tag `v1.0.0-canary.9` (`aa900002d054`). Informe en `AUDIT.md` §1.
 - **`upstream/main` `3c8acc1e1e39`** (30 commits sobre el tag): revisión estática sin malware, no promovida por ser rama y porque el updater sigue en `depot.sfg545.dev` (`AUDIT.md` §4). `bootstrapper/` sin cambios en ese rango.
 - **Licencia del motor adaptativo:** OOL-1.0 en el tag (bloqueo L1); `upstream/main` lo relicencia a PolyForm Shield 1.0.0, lo que desbloquea L1 al promover un tag que lo incluya, conservando el `Required Notice`.
 - **HU-ORCH-02 aplicada:** clave `orchard-fork-1`, servidor del fork y fin del auto-update en segundo plano. `grep` sin `depot.sfg545.dev`/`downloads.sfg545.dev` en `bootstrapper/` y `mobile/`.
+- **HU-ORCH-06 aplicada (código):** cuenta/Connect → `connect.kasper-cloud.com`; auto-update off por defecto y sin sondeo; `artwork.sfg545.dev` y `lastfm.sfg545.dev` neutralizados en escritorio y Android; `providers/apple-music/` no existe en este tag. **Despliegue del Worker pendiente de ejecución por shell** (migraciones D1, secrets y `wrangler deploy`).
 
 ## 5. Gobernanza de actualizaciones del upstream
 Reglas canónicas en `AGENTS.md`; `CLAUDE.md` y `GEMINI.md` lo importan y añaden el checklist de su rol. Datos en `UPSTREAM.md`.

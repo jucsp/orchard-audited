@@ -22,7 +22,7 @@ package dev.sfg.orchard.mobile.discord
 import java.net.URI
 
 const val DISCORD_APPLICATION_ID = 1531666622312353803L
-const val DISCORD_ORCHARD_PROJECT_URL = "https://sfg545.dev/orchard"
+const val DISCORD_ORCHARD_PROJECT_URL = "https://github.com/jucsp/orchard-audited"
 const val DISCORD_LISTENING = 2
 
 fun trimDiscordText(value: String?, fallback: String = "", maxLen: Int = 128): String {

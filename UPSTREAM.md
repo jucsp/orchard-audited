@@ -30,6 +30,11 @@ Rutas donde el fork tiene o tendrá parches. Ningún cambio del upstream las sob
 | `bootstrapper/src/app/Bootstrapper.cpp` | Sin lanzamiento automático de `--background-update` | INV-1, REQ-U5 | activa |
 | `app/src/update/`, QML de ajustes de actualización | Diálogos Sí/No e Instalar/Más tarde, canal único | INV-1–2, REQ-U4, U7 | _prevista_ HU-ORCH-03 |
 | `mobile/android/app/src/main/java/dev/sfg/orchard/mobile/UpdateManager.kt` | Updater Android hacia el fork | INV-3 | activa |
+| `app/src/account/orchard_account.cpp`, `mobile/.../auth/OrchardAccountService.kt` | Cuenta/Connect hacia `connect.kasper-cloud.com` | INV-3 | activa (HU-ORCH-06) |
+| `app/src/update/bootstrapper_client.{h,cpp}` | Auto-update off por defecto y sin sondeo periódico | INV-1, REQ-U5 | activa (HU-ORCH-06) |
+| `app/src/integrations/discord_artwork.cpp` | No confiar en `artwork.sfg545.dev` | INV-3 | activa (HU-ORCH-06) |
+| `app/src/integrations/lastfm.cpp`, `mobile/.../lastfm/LastfmRepository.kt` | Sin llamadas a `lastfm.sfg545.dev` | INV-3 | activa (HU-ORCH-06) |
+| `services/account/wrangler.production.jsonc` | Worker propio `orchard-account` en `connect.kasper-cloud.com` | INV-3 | activa (HU-ORCH-06) |
 | Telemetría o red en segundo plano desactivada por el fork (H7) | Valores por defecto del fork | INV-6 | _prevista_ |
 | `.github/workflows/release.yml` y ausencia de `manual-desktop-build.yml` | Release solo hacia GitHub Releases del fork, acciones por SHA, publicación directa en `jucsp/orchard-audited`; sin job que publique en R2 | REQ-A2–A6, A10 | activa |
 | `.github/workflows/` (monitor) | Monitor solo alerta | REQ-M1–M4 | _prevista_ HU-ORCH-04 |
@@ -68,6 +73,9 @@ Si el rango tiene commits `rechazado`, no se rebasa: se aplican los aceptados co
 | 8 | `a4deeac` | updater | Servidor del fork, sin auto-update en segundo plano y Android hacia el fork | REQ-U2, U5 | HU-ORCH-02 | `bootstrapper/src/update/ReleaseClient.hpp`, `bootstrapper/src/app/Bootstrapper.cpp`, `mobile/.../UpdateManager.kt`, `mobile/.../UpdateManagerTest.kt` | — |
 | 9 | _pendiente_ | ci | Pipeline de release hacia GitHub Releases del fork (creado, sin commit); se elimina `manual-desktop-build.yml` (publicación a R2) | REQ-A2–A6 | HU-ORCH-05 | `.github/workflows/release.yml`, `.github/workflows/manual-desktop-build.yml` (borrado) | — |
 | 10 | _pendiente_ | build | Empaquetado `.rpm` desde el AppDir (creado, sin commit) | REQ-A2, A10 | HU-ORCH-05 | `scripts/package-linux-rpm.sh`, `packaging/rpm/orchard.spec` | — |
+| 11 | _pendiente_ | account | Worker propio y cuenta/Connect hacia `connect.kasper-cloud.com` | INV-3 | HU-ORCH-06 | `services/account/wrangler.production.jsonc`, `app/src/account/orchard_account.cpp`, `mobile/.../OrchardAccountService.kt` | — |
+| 12 | _pendiente_ | updater | Auto-update off por defecto y sin sondeo periódico | REQ-U5 | HU-ORCH-06 | `app/src/update/bootstrapper_client.{h,cpp}`, `app/qml/.../GeneralSection.qml`, `app/qml/.../WelcomeSystemPage.qml` | — |
+| 13 | _pendiente_ | integrations | Neutralizar `artwork.sfg545.dev` y `lastfm.sfg545.dev` | INV-3 | HU-ORCH-06 | `app/src/integrations/discord_artwork.cpp`, `app/src/integrations/lastfm.cpp`, `mobile/.../LastfmRepository.kt`, `tests/discord_artwork_test.cpp` | — |
 
 Los commits marcados ❌/⚠️ no cumplen la convención. Corregirlos implica reescribir historial publicado (`git rebase` con reword y push forzado), así que queda a decisión del propietario; hasta entonces, `git log --grep '^audit-fork:'` no los lista y deben revisarse a mano en cada rebase.
 

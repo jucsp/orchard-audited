@@ -64,6 +64,7 @@ WelcomePage {
         hint: qsTr("New versions install the next time Orchard starts.")
 
         SettingsSwitch {
+            // Off by default: BootstrapperClient::m_autoUpdate defaults to false (INV-1).
             checked: OrchardUpdates.autoUpdate
             onToggled: OrchardUpdates.setAutoUpdate(checked)
             Accessible.name: qsTr("Download updates automatically")

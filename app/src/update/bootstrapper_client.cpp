@@ -54,10 +54,9 @@ BootstrapperClient::BootstrapperClient(QObject *parent) : QObject(parent)
         return;
     m_bootstrapper = bootstrapper;
     m_current = qEnvironmentVariable("ORCHARD_INSTALLED_VERSION");
-    // Two small file reads; the background updater can finish while we run.
-    m_poll.setInterval(30000);
+    // INV-1: no periodic background polling. The poll timer is only started
+    // while a user-requested update is in flight (see run()).
     connect(&m_poll, &QTimer::timeout, this, &BootstrapperClient::refresh);
-    m_poll.start();
     refresh();
 }
 
@@ -83,11 +82,17 @@ void BootstrapperClient::refresh()
     m_state = state;
     m_latest = pending.isEmpty() ? status.value(QStringLiteral("latest")).toString() : pending;
     m_channel = install.value(QStringLiteral("channel")).toString(QStringLiteral("stable"));
-    m_autoUpdate = install.value(QStringLiteral("autoUpdate")).toBool(true);
+    // INV-1 / REQ-U5: auto-update is off unless the user explicitly enables it.
+    m_autoUpdate = install.value(QStringLiteral("autoUpdate")).toBool(false);
     m_error = state == QLatin1String("error") ? status.value(QStringLiteral("error")).toString() : QString();
     m_downloaded = status.value(QStringLiteral("done")).toInteger();
     m_total = status.value(QStringLiteral("total")).toInteger();
-    m_poll.setInterval(alive ? 500 : 30000);
+    // Keep polling fast only while an explicit update is running; otherwise the
+    // timer stops so no background polling ever occurs.
+    if (busy(m_state))
+        m_poll.setInterval(alive ? 500 : 30000);
+    else
+        m_poll.stop();
     emit changed();
 }
 

@@ -99,6 +99,7 @@ GeneralSectionForm {
             OrchardUpdates.checkForUpdates();
     }
 
+    // Off by default: BootstrapperClient::m_autoUpdate defaults to false (INV-1).
     autoUpdateSwitch.checked: OrchardUpdates.autoUpdate
     autoUpdateSwitch.onToggled: OrchardUpdates.setAutoUpdate(autoUpdateSwitch.checked)
 

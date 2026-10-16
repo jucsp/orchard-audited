@@ -59,8 +59,10 @@ expires. The account routes (`/me`, `/devices`) also check the device row.
 
 Permanent hosting for Discord Rich Presence artwork in Backblaze B2. The worker
 receives the bytes so it can parse the WebP container before storage. Public
-files are served from `https://artwork.sfg545.dev`, which maps to the bucket
-root; the B2 application key stays with the worker.
+files are served from the account host (`PUBLIC_URL`) or a dedicated
+`ARTWORK_PUBLIC_URL` domain; the B2 application key stays with the worker. The
+fork's minimal production config does not configure B2, so artwork falls back
+to `PUBLIC_URL`.
 
 - Key: `<sha256>.webp` at the bucket root, chosen by the worker. Re-uploading
   stored bytes returns the existing URL (`reused: true`).
@@ -150,13 +152,14 @@ is ignored by Git. `npm run deploy` and `npm run migrate:remote` use the
 production JSONC; check it before either command.
 
 1. In Google Cloud, create an OAuth client of type **Web application** with
-   the redirect URI `https://account.sfg545.dev/auth/google/callback`. Only the
-   `openid`, `email` and `profile` scopes are used.
+   the redirect URI `https://connect.kasper-cloud.com/auth/google/callback`.
+   Only the `openid`, `email` and `profile` scopes are used.
 2. Create the database and put its id in `wrangler.production.jsonc`:
    `npx wrangler d1 create orchard-accounts`
-3. Use the `Orchard-Art` B2 bucket already served at `artwork.sfg545.dev`.
-   The Worker uses its lowercase S3 name `orchard-art` and endpoint region
-   `us-west-004`. Keep artwork files without an expiration lifecycle rule.
+3. Use the `Orchard-Art` B2 bucket served at the account host (`PUBLIC_URL`
+   fallback) or a dedicated `ARTWORK_PUBLIC_URL` domain. The Worker uses its
+   lowercase S3 name `orchard-art` and endpoint region `us-west-004`. Keep
+   artwork files without an expiration lifecycle rule.
    Create a bucket-scoped application key with read and write file permissions.
    The bucket root maps to the artwork domain root.
 4. Set `GOOGLE_CLIENT_ID` in `wrangler.production.jsonc`, then add the secrets:
@@ -171,7 +174,7 @@ production JSONC; check it before either command.
    `--config wrangler.production.jsonc`.
 6. Bug reports: create the screenshot bucket with
    `npx wrangler r2 bucket create orchard-support`. Create a GitHub OAuth app
-   with the callback `https://account.sfg545.dev/auth/github/callback`, put
+   with the callback `https://connect.kasper-cloud.com/auth/github/callback`, put
    its client id in `GITHUB_CLIENT_ID`, and check `GITHUB_REPOSITORY`. Then
    `npx wrangler secret put GITHUB_CLIENT_SECRET --config wrangler.production.jsonc`
    and `GITHUB_TOKEN` with the same config (a

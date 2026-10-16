@@ -233,7 +233,7 @@ private slots:
         return Response{404, {}, {}};
       if (request.path == QStringLiteral("/artwork")) {
         uploaded = request.body;
-        return jsonResponse(201, {{QStringLiteral("url"), QStringLiteral("https://artwork.sfg545.dev/abc.webp")},
+        return jsonResponse(201, {{QStringLiteral("url"), server.url(QStringLiteral("/artwork/abc.webp")).toString()},
                                   {QStringLiteral("expires_at"), QJsonValue::Null}});
       }
       return source(request);
@@ -246,7 +246,7 @@ private slots:
     QString result;
     artwork.prepare(server.url(QStringLiteral("/one.mp4")).toString(), [&](const QString &url) { result = url; });
     QTRY_VERIFY_WITH_TIMEOUT(!result.isEmpty(), 60000);
-    QCOMPARE(result, QStringLiteral("https://artwork.sfg545.dev/abc.webp"));
+    QCOMPARE(result, server.url(QStringLiteral("/artwork/abc.webp")).toString());
 
     const auto info = DiscordArtwork::parseWebp(uploaded);
     QVERIFY(info);
@@ -276,7 +276,7 @@ private slots:
           return Response{404, {}, {}};
         return jsonResponse(200, {{QStringLiteral("files"), QJsonArray{QJsonObject{
             {QStringLiteral("source_sha256"), digest},
-            {QStringLiteral("url"), QStringLiteral("https://artwork.sfg545.dev/abc.webp")},
+            {QStringLiteral("url"), server.url(QStringLiteral("/artwork/abc.webp")).toString()},
             {QStringLiteral("expires_at"), QJsonValue::Null}}}}});
       }
       return source(request);
@@ -288,7 +288,7 @@ private slots:
 
     QString result;
     artwork.prepare(server.url(QStringLiteral("/one.mp4")).toString(), [&](const QString &url) { result = url; });
-    QTRY_COMPARE(result, QStringLiteral("https://artwork.sfg545.dev/abc.webp"));
+    QTRY_COMPARE(result, server.url(QStringLiteral("/artwork/abc.webp")).toString());
     QCOMPARE(server.count("GET", QStringLiteral("/one.mp4")), 0);
     QCOMPARE(server.count("POST", QStringLiteral("/artwork")), 0);
   }

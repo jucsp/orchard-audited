@@ -47,7 +47,7 @@ AboutSectionForm {
     }
 
     releaseNotesButton.onClicked: root.releaseNotesRequested()
-    orchardLinkButton.onClicked: Qt.openUrlExternally("https://sfg545.dev/orchard")
+    orchardLinkButton.onClicked: Qt.openUrlExternally("https://github.com/jucsp/orchard-audited")
     orchardLicenseButton.onClicked: root.showLicenseModal(qsTr("Orchard License (AGPL-3.0)"), "orchard")
 
     licenseList.delegate: SettingsLicenseCard {

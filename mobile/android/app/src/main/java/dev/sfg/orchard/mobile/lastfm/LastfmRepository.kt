@@ -236,7 +236,9 @@ class LastfmRepository(
     private fun Throwable.userMessage(fallback: String): String = message?.takeIf(String::isNotBlank) ?: fallback
 
     private companion object {
-        const val WORKER_ENDPOINT = "https://lastfm.sfg545.dev"
+        // The fork does not run the author's Last.fm proxy. An empty endpoint
+        // disables scrobbling; point this at a self-hosted proxy to re-enable it.
+        const val WORKER_ENDPOINT = ""
         const val USER_AGENT = "OrchardMobile/2.0"
         const val AUTH_WINDOW_MS = 10 * 60_000L
         val JSON = "application/json; charset=utf-8".toMediaType()

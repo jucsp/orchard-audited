@@ -35,7 +35,10 @@
 namespace {
 constexpr auto keychainService = "dev.sfg.orchard";
 constexpr auto keychainEntry = "lastfm-session";
-constexpr auto defaultServiceUrl = "https://lastfm.sfg545.dev";
+// The fork does not run the author's Last.fm proxy. Leave the default empty so
+// no request ever reaches lastfm.sfg545.dev; deployments can point
+// ORCHARD_LASTFM_URL at their own proxy to re-enable scrobbling.
+constexpr auto defaultServiceUrl = "";
 constexpr auto settingsGroup = "integrations/lastfm";
 // The worker maps this to the Orchard V3 user agent it sends Last.fm.
 constexpr auto userAgent = "OrchardDesktop/3.0";

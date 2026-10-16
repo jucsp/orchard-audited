@@ -39,7 +39,8 @@
 namespace {
 constexpr auto keychainService = "dev.sfg.orchard";
 constexpr auto keychainEntry = "orchard-account";
-constexpr auto defaultServiceUrl = "https://account.sfg545.dev";
+// Fork's own account + Orchard Connect Worker (INV-3: no author hosts).
+constexpr auto defaultServiceUrl = "https://connect.kasper-cloud.com";
 constexpr int signInTimeoutMs = 5 * 60 * 1000;
 constexpr int requestTimeoutMs = 15000;
 // Refresh a minute early so a token never expires mid-request.

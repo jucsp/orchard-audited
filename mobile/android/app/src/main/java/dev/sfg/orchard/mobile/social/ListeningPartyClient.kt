@@ -600,7 +600,7 @@ class ListeningPartyClient(
 
     private companion object {
         const val TAG = "ListeningParty"
-        const val DEFAULT_SERVICE_URL = "https://party.sfg545.dev"
+        const val DEFAULT_SERVICE_URL = ""
         const val PARTY_STATE = "party:state"
         const val CONNECTION_TIMEOUT_MS = 10_000L
         val JSON_MEDIA_TYPE = "application/json".toMediaType()
@@ -608,7 +608,7 @@ class ListeningPartyClient(
 }
 
 /** The party's default service, exposed so callers can override it without repeating the literal. */
-const val DEFAULT_PARTY_SERVICE_URL = "https://party.sfg545.dev"
+const val DEFAULT_PARTY_SERVICE_URL = ""
 
 /**
  * A party failure with a message already fit to show a listener.

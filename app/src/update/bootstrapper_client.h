@@ -79,5 +79,5 @@ private:
     QString m_error;
     qint64 m_downloaded{0};
     qint64 m_total{0};
-    bool m_autoUpdate{true};
+    bool m_autoUpdate{false};
 };

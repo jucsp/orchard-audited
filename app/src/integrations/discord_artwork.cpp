@@ -79,11 +79,10 @@ void warn(const QString &message) { qWarning().noquote() << "Discord artwork:" <
 bool trustedArtworkUrl(const QUrl &url, const QUrl &service) {
   if (!url.isValid() || !url.userName().isEmpty() || !url.password().isEmpty())
     return false;
-  const bool accountHost = url.scheme() == service.scheme() && url.host() == service.host() &&
+  // Only the account service may host Discord artwork. The author's
+  // artwork.sfg545.dev host is intentionally not trusted (INV-3).
+  return url.scheme() == service.scheme() && url.host() == service.host() &&
       url.port() == service.port();
-  const bool artworkHost = url.scheme() == QStringLiteral("https") &&
-      url.host() == QStringLiteral("artwork.sfg545.dev") && url.port() == -1;
-  return accountHost || artworkHost;
 }
 
 quint32 u24(const uchar *p) { return quint32(p[0]) | (quint32(p[1]) << 8) | (quint32(p[2]) << 16); }
