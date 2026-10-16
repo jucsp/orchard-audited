@@ -14,7 +14,7 @@ Reglas permanentes para todo agente que trabaje en este repositorio (Antigravity
 Ningún cambio del upstream entra a `audited` sin una auditoría estática previa registrada en `AUDIT.md`.
 
 - La entrada debe existir **antes** de integrar: fila en la tabla de versiones y sección propia con commit exacto, método, veredicto, qué **no** se verificó y la clasificación de cada commit del rango (Regla 3).
-- Solo se promueven **tags** del upstream. Una rama (`upstream/main`) puede auditarse a título informativo, pero no se integra.
+- Solo se promueven **tags** de release oficiales del upstream (incluyendo tags del canal canary como `v1.0.0-canary.*`), evitando fusionar ramas de desarrollo flotantes (`upstream/main`, `upstream/canary`). Una rama puede auditarse a título informativo, pero no se integra.
 - La auditoría la emite Claude (PM/QA). Un resumen de Ollama o una opinión de DeepSeek no cuentan como auditoría.
 - Hallazgo crítico (malware, puerta trasera, exfiltración, ofuscación injustificada) = no se integra nada del tag. Se documenta y se informa al propietario.
 

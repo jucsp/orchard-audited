@@ -50,8 +50,32 @@ Fork de auditoría de seguridad sobre `sfg5453/orchard` para mantener un control
 - **ID:** HU-ORCH-05
 - **Prioridad:** Alta
 - **Estimación:** 5 SP
-- **Descripción:** Replicar workflows de CI/CD para compilar y generar releases automáticamente en el fork (Linux AppImage, Windows, Linux ARM64) y agregar empaquetado `.rpm` para Fedora/KDE (REQ-A2, REQ-A10). Firma del RPM y generación de manifiestos firmados. Disparo 100% automatizado cada vez que se haga push/merge a la rama principal del fork (`main` o `audited`). La única acción manual será la decisión del usuario en la interfaz de la aplicación de descargar e instalar.
+- **Descripción:** Replicar workflows de CI/CD para compilar y generar releases automáticamente en el fork (Linux AppImage, Windows) y agregar empaquetado `.rpm` para Fedora/KDE (REQ-A2, REQ-A10). Firma del RPM y generación de manifiestos firmados. Disparo 100% automatizado cada vez que se haga push/merge a la rama principal del fork (`main` o `audited`). La única acción manual será la decisión del usuario en la interfaz de la aplicación de descargar e instalar.
 - **Criterios de Aceptación:**
   - Publicación automatizada en GitHub Releases del fork ante push en `main` / `audited`.
   - Generación de artefactos AppImage, Windows y `.rpm`.
   - RPM instalable y verificado en Fedora.
+
+### HU-ORCH-06: Desacople de Servicios de Terceros y Soberanía Local
+- **ID:** HU-ORCH-06
+- **Prioridad:** Alta
+- **Estimación:** 3 SP
+- **Descripción:** Purgar el proveedor innecesario `providers/apple-music/` eliminando dependencias de tokens de Apple. Desconectar la traducción en la nube con Cloudflare AI (`/lyrics/translate`) y fijar la traducción nativa con Gemini (BYOK con clave personal del usuario en `generativelanguage.googleapis.com`), desactivada por defecto. Preservar Orchard Connect (Cloudflare Worker) con soporte de URL parametrizable para autoalojamiento personal (`ORCHARD_ACCOUNT_URL`).
+- **Criterios de Aceptación:**
+  - Eliminado el directorio `providers/apple-music/` y referencias en compilación.
+  - Traducción por defecto desactivada y exclusivamente vía API Key de Gemini del usuario.
+  - Cero llamadas a `account.sfg545.dev/lyrics/translate`.
+
+---
+
+## 🔮 Backlog Futuro (Roadmap)
+
+### HU-ORCH-07: Soporte y Compilación para Android TV (D-Pad & Leanback)
+- **ID:** HU-ORCH-07
+- **Prioridad:** Baja (Futura)
+- **Estimación:** 8 SP
+- **Descripción:** Adaptar la versión móvil de Android para ejecución en Android TV / Google TV. Habilitar `android.software.leanback` en el manifiesto, diseñar el banner para el lanzador de TV y adaptar la navegación mediante control remoto (D-Pad focus traversal). Generar el APK optimizado para TV en el pipeline de GitHub Actions.
+- **Criterios de Aceptación:**
+  - APK instalable y visible en el lanzador de Android TV.
+  - Navegación fluida y foco visible con D-Pad (flechas del mando a distancia).
+  - Reproducción continua en TV sincronizada con Orchard Connect.
