@@ -406,6 +406,8 @@ class CastV2Player(
         return (base + elapsed * status.playbackRate).toLong().coerceAtLeast(0)
     }
 
+    private fun send(command: () -> CompletableFuture<CastMediaStatus>) = send(command, null)
+
     private fun send(
         command: () -> CompletableFuture<CastMediaStatus>,
         onResult: ((CastMediaStatus?, Throwable?) -> Unit)? = null,
