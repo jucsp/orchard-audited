@@ -248,7 +248,7 @@ Acción recomendada cuando el upstream publique un tag estable: repetir esta rev
 | Host | Código | Disparo |
 | --- | --- | --- |
 | `www.gstatic.com/generate_204`, `www.youtube.com/generate_204` | `app/src/offline/connectivity_monitor.cpp:33` | ✅ Sustituido por `connect.kasper-cloud.com/.well-known/jwks.json` (H13, §5.6) |
-| Google Cast (Play Services) | `MainActivity.kt:54`, `OrchardPlaybackService.kt:193`, `OrchardCastOptionsProvider.kt`, manifest | ✅ Sin inicialización de `CastContext` ni `ChromecastPlayback` (H15, §5.6) |
+| Google Cast (Play Services) | `MainActivity.kt:54`, `OrchardPlaybackService.kt:193`, `OrchardCastOptionsProvider.kt`, manifest | ✅ Sin inicialización de `CastContext` ni `ChromecastPlayback` (H15, §5.6). Se sustituye por CastV2 propio, solo LAN y a pedido del usuario (HU-ORCH-12, §5.10) |
 | `api.openai.com`, `api.anthropic.com`, `generativelanguage.googleapis.com` | `lyrics_translator.cpp:47-49`, `RemoteLyricTranslation.kt:90-92` | Opt-in, con clave del usuario |
 | `huggingface.co/Helsinki-NLP` | `translation_pack_table.cpp` | ✅ Retirado: tabla de packs vacía, sin traducción offline (HU-ORCH-09, §5.7) |
 | `api.github.com/repos/jucsp/orchard-audited` | `UpdateManager.kt:53` | Releases del fork |
@@ -268,7 +268,7 @@ Acción recomendada cuando el upstream publique un tag estable: repetir esta rev
 | H12 | Media | 15 packs de traducción offline se descargan del repo HuggingFace del autor (`SFG545/orchard-lyric-translation`). Integridad cubierta por commit fijado + SHA-256, pero viola "sin hosts del autor en rutas de descarga" e INV-3; el autor ve IP y momento de descarga | Resuelto (§5.6) | DeepSeek: re-alojar los packs en un repo HF propio (mismos hashes) o desactivar esos 15 packs |
 | H13 | Baja | Sonda de conectividad a Google/YouTube al arrancar y cada 15 s sin interacción del usuario (INV-6) | Resuelto (§5.6) | Probar contra el propio Worker (`connect.kasper-cloud.com`) o solo bajo demanda tras un fallo |
 | H14 | Baja | Discord Rich Presence usa la aplicación de Discord del autor; el autor controla nombre/assets y Discord le atribuye la actividad | Resuelto (§5.6) | Registrar una aplicación propia y sustituir el ID en los 3 puntos |
-| H15 | Baja | Cast sigue activo en Android: `CastContext` y `ChromecastPlayback` se inicializan al arrancar, con descubrimiento de dispositivos en la LAN vía Play Services, aunque HU-ORCH-08 retiró la UI | Resuelto (§5.6) | Quitar la inicialización o la dependencia `media3-cast` (completar HU-ORCH-08) |
+| H15 | Baja | Cast sigue activo en Android: `CastContext` y `ChromecastPlayback` se inicializan al arrancar, con descubrimiento de dispositivos en la LAN vía Play Services, aunque HU-ORCH-08 retiró la UI | Resuelto (§5.6). Cast vuelve como CastV2 propio por decisión del propietario (C1, §5.10) | Quitar la inicialización o la dependencia `media3-cast` (completar HU-ORCH-08). El retiro de `media3-cast` pasa a HU-ORCH-12 (Q1) |
 
 ### 5.5 Conclusión QA
 
@@ -370,3 +370,21 @@ Acción recomendada cuando el upstream publique un tag estable: repetir esta rev
 - No verificado: ejecución real en Actions ni `assembleRelease` (no hay SDK de Android en esta máquina). `actionlint` no está instalado.
 
 **Riesgo pendiente:** con la keystore desechable cada release se firma con una clave distinta, así que Android rechaza instalar el APK nuevo encima del anterior: hay que desinstalar y se pierden los datos locales. Para actualizar sin desinstalar, el propietario debe cargar una vez los cuatro secretos `ANDROID_KEYSTORE_*` en el repositorio.
+
+### 5.10 Re-implementación de Chromecast con CastV2 propio (HU-ORCH-12, 2026-10-17)
+
+- **Base:** `d432ff5`. Solo documentación; no hay código en este paso.
+- **Contrato:** `SDD-chromecast-castv2.md` v1.0 (invariantes `CAST-INV-1` a `CAST-INV-9`).
+- **Tipo:** cambio del fork sobre una zona protegida propia (H15, INV-6). No viene del upstream, pero se registra con la plantilla de la Regla 4 porque revierte una decisión de HU-ORCH-08.
+
+#### Conflicto C1: HU-ORCH-12, `mobile/.../playback/` y `mobile/.../connect/app/MainActivity.kt`
+- Cambio propuesto: volver a transmitir audio a Chromecast, Google TV y parlantes Google Home/Nest desde Android, y en una fase 2 desde escritorio. Motivo: uso personal del propietario en casa y en el auto.
+- Parche del fork afectado: remediación H15 (§5.6, sin `CastContext` ni `ChromecastPlayback` al arrancar) y purga de UI de HU-ORCH-08. Protege INV-6 y la ausencia de binarios cerrados sin auditar (§5.3).
+- Opción A, conservar el parche y no tener Cast: pros, superficie mínima y cero binarios de Google. Contras, sin la función que pide el propietario.
+- Opción B, adaptar el parche: CastV2 propio sin Play Services (mDNS `_googlecast._tcp`, TLS al puerto anunciado, `CastMessage` codificado a mano, Default Media Receiver `CC1AD845`, `ChromecastStreamServer` local). Pros, código abierto auditable, sin costo, sin servidores externos, sin actividad hasta que el usuario busca dispositivos, y se puede retirar `media3-cast` del APK. Contras, protocolo propio que mantener, TLS sin CA (se mitiga con pin TOFU) y prueba en hardware real solo manual. Esfuerzo: 5 SP en Android; escritorio aparte.
+- Opción C, restaurar `media3-cast` con el App ID por defecto: no requiere pago, pero reintroduce Play Services, que es un binario cerrado con canal propio posible (§5.3) y mantiene el descubrimiento fuera del control del fork. No se recomienda.
+- Riesgo: baja. Superficie, LAN del usuario: socket TLS saliente al dispositivo elegido y servidor HTTP efímero con token de 128 bits que solo atiende al IP del receptor. Explotabilidad, requiere un atacante en la misma red. Invariantes afectados: INV-6, cubierto por `CAST-INV-2`, `CAST-INV-3` y `CAST-INV-6`.
+- Recomendación del Swarm: Opción B. Es la única que da la función sin binarios cerrados ni servidores externos.
+- Decisión del propietario: **Opción B aprobada** (2026-10-17). Alcance aprobado: Android y escritorio, incluidos parlantes Google Home/Nest Mini. La fase 2 (escritorio) se abre con orden explícita del PO.
+
+**Pendiente para cerrar C1:** implementación T1–T7 y Q1–Q2, informe QA (Q3) en esta sección con ✅/❌ por cada `CAST-INV` y por cada criterio de `SDD-chromecast-castv2.md` §6. Hasta entonces, H15 se mantiene: no se inicializa nada de cast al arrancar.

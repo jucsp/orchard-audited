@@ -78,10 +78,12 @@ Fork de auditoría de seguridad sobre `sfg5453/orchard` para mantener un control
 ### HU-ORCH-12: Re-implementación de Soporte para Chromecast
 - **ID:** HU-ORCH-12
 - **Prioridad:** Alta
-- **Estimación:** 5 SP
-- **Descripción:** Re-implementar e integrar nuevamente la funcionalidad de transmisión hacia dispositivos Chromecast en la aplicación móvil (`CastContext`, `ChromecastPlayback` y controles en `FrostedDevicesScreen.kt` y ajustes), permitiendo descubrir dispositivos en la red local y enviar la reproducción de audio de forma fluida.
+- **Estimación:** 5 SP (fase 1, Android). Fase 2 (escritorio) se estima al abrirla.
+- **Contrato:** `SDD-chromecast-castv2.md` (invariantes `CAST-INV-1` a `CAST-INV-9`). Decisión del propietario: Opción B aprobada el 2026-10-17 (`AUDIT.md` §5.10, C1).
+- **Descripción:** Transmitir audio a Chromecast, Google TV y parlantes Google Home/Nest (incluidos grupos) con un cliente CastV2 propio: descubrimiento mDNS `_googlecast._tcp`, TLS al puerto anunciado, `CastMessage` codificado sin librería de protobuf, Default Media Receiver `CC1AD845` y `ChromecastStreamServer` local. Sin Google Play Services (`media3-cast` se retira), sin App ID registrado, sin costos y sin servidores externos. Nada se activa hasta que el usuario busca dispositivos.
 - **Criterios de Aceptación:**
-  - Controles de Chromecast restaurados y funcionales en la interfaz de dispositivos y ajustes.
-  - Descubrimiento y conexión exitosa con receptores Chromecast en la red local.
-  - Sincronización de reproducción, pausa y cola de audio hacia el dispositivo Chromecast.
+  - Los de `SDD-chromecast-castv2.md` §6.
+  - Árbol de dependencias de release sin `gms`, `play-services` ni `mediarouter`.
+  - Descubrimiento, conexión, reproducción, pausa, seek, volumen del dispositivo y avance de cola en un Chromecast/Google TV y un Nest Mini reales.
+  - Sin tráfico de cast al arrancar la app (H15).
 

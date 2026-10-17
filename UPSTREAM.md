@@ -41,7 +41,8 @@ Rutas donde el fork tiene o tendrá parches. Ningún cambio del upstream las sob
 | `app/src/lyrics/translation/lyrics_translator.{h,cpp}`, `app/qml/components/settings/LyricTranslationSettings*.qml`, `mobile/.../ui/screens/SettingsLyrics.kt`, `mobile/.../lyrics/translation/LyricTranslator.kt` | Sin proveedor `local` ni UI de modelos offline; traducción solo por API elegida | INV-6 | activa (HU-ORCH-09) |
 | `app/src/offline/connectivity_monitor.cpp` | Sonda de conectividad solo hacia el Worker propio | INV-6 | activa (H13) |
 | `app/src/integrations/discord.cpp`, `discord_sdk_bridge.cpp`, `mobile/.../discord/DiscordArtwork.kt`, `DiscordPresenceCoordinator.kt`, `buildConfigField DISCORD_APPLICATION_ID` en `mobile/android/app/build.gradle` | Sin Discord App ID del autor | INV-3 | activa (H14) |
-| `mobile/.../connect/app/MainActivity.kt`, `mobile/.../playback/OrchardPlaybackService.kt` | Cast sin inicializar | INV-6 | activa (H15) |
+| `mobile/.../connect/app/MainActivity.kt`, `mobile/.../playback/OrchardPlaybackService.kt` | Cast sin inicializar al arrancar; solo CastV2 propio a pedido del usuario | INV-6, CAST-INV-3 | activa (H15; C1 aprobado, `AUDIT.md` §5.10) |
+| `mobile/.../cast/`, `mobile/.../playback/ChromecastPlayback.kt`, `ChromecastStreamServer.kt`, `ui/screens/ChromecastSettingsRow.kt`; ausencia de `media3-cast`, `OrchardCastOptionsProvider.kt`, `MediaTransferReceiver` y `cast_app_id` | CastV2 propio: sin Play Services, solo LAN, App ID fijo `CC1AD845`, stream con token efímero | INV-6, CAST-INV-1–8 | _prevista_ HU-ORCH-12 |
 | `.github/workflows/release.yml` y ausencia de `manual-desktop-build.yml` | Release solo hacia GitHub Releases del fork, acciones por SHA, publicación directa en `jucsp/orchard-audited`; sin job que publique en R2; incluye el APK Android arm64-v8a | REQ-A2–A6, A10 | activa (HU-ORCH-10) |
 | `.github/workflows/` (monitor) | Monitor solo alerta | REQ-M1–M4 | _prevista_ HU-ORCH-04 |
 | `scripts/package-linux-rpm.sh`, `packaging/rpm/` | Empaquetado `.rpm` del fork | REQ-A2, A10 | activa |
@@ -50,7 +51,7 @@ Rutas donde el fork tiene o tendrá parches. Ningún cambio del upstream las sob
 | `README.md` (bloque inicial REQ-R3) | Aviso de fork de auditoría y verificación de descargas | REQ-R3 | activa |
 | `AUDIT.md`, `UPSTREAM.md` | Trazabilidad de auditorías y cambios del fork | REQ-R4, R5 | activa |
 | `AGENTS.md`, `CLAUDE.md`, `GEMINI.md` | Gobernanza del Swarm. `AGENTS.md` es archivo del upstream: conservar su línea `@contributing.md` y reaplicar el bloque del fork si el upstream lo cambia | INV-7 | activa |
-| `SDD-orchard-audit-fork.md`, `backlog.md`, `sprint_board.md`, `technical_memory.md` | Contrato y planificación del fork | — | activa |
+| `SDD-orchard-audit-fork.md`, `SDD-chromecast-castv2.md`, `backlog.md`, `sprint_board.md`, `technical_memory.md` | Contratos y planificación del fork | — | activa |
 
 ## Rebase sobre un tag nuevo
 
@@ -107,3 +108,5 @@ Commits del upstream integrados por `cherry-pick -x` fuera de un tag completo. V
 | ci | Monitor del upstream que solo abre issues; alerta alta si cambian `TrustedKeys.cpp` o `bootstrapper/src/update/` | REQ-M1–M4 | HU-ORCH-04 | `.github/workflows/monitor-upstream.yml` |
 | ci | Manifiestos y canal firmados con `orchard-fork-1` en una estructura que el bootstrapper pueda leer desde GitHub Releases | REQ-A3, A9 | HU-ORCH-03/05 | `scripts/release/`, `.github/workflows/release.yml` |
 | build | Firma GPG del `.rpm` y publicación de la clave pública | REQ-A10 | HU-ORCH-05 | `packaging/rpm/` |
+| build | Retirar `media3-cast`, `OrchardCastOptionsProvider`, meta-data de Cast, `MediaTransferReceiver` y `cast_app_id` | CAST-INV-1, CAST-INV-5 | HU-ORCH-12 | `mobile/android/app/build.gradle`, `AndroidManifest.xml`, `res/values/strings.xml` |
+| cast | Motor CastV2 propio, descubrimiento mDNS, `CastV2Player` y stream con token por sesión (decisión C1 del propietario, 2026-10-17) | `SDD-chromecast-castv2.md` | HU-ORCH-12 | `mobile/.../cast/`, `mobile/.../playback/Chromecast*.kt`, UI de dispositivos y ajustes |

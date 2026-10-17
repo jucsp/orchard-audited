@@ -16,9 +16,12 @@
   - [Responsable: Claude PM/QA] Adaptación de UI, navegación con D-Pad focus traversal, manifiesto Leanback y generación de APK en el pipeline de releases.
   - [Responsable: DeepSeek Dev] Integración del reproductor y sincronización continua con Orchard Connect en Android TV.
 
-- [ ] **HU-ORCH-12: Re-implementación de Soporte para Chromecast**
-  - [Responsable: DeepSeek Dev] Restaurar e implementar `CastContext`, `ChromecastPlayback` y el manejo de sesión y envío de audio.
-  - [Responsable: Claude PM/QA] Reincorporar los controles de Chromecast en la UI (`FrostedDevicesScreen.kt`, `SettingsPages.kt`, `SettingsIndex.kt`) y validar la transmisión.
+- [ ] **HU-ORCH-12: Chromecast con CastV2 propio, sin Play Services** (contrato `SDD-chromecast-castv2.md`; C1 aprobado por el propietario, `AUDIT.md` §5.10)
+  - [x] [Responsable: Claude PM/QA] Contrato SDD y registro de la decisión en `AUDIT.md`/`UPSTREAM.md`. Pendiente revisión del PO antes de lanzar a DeepSeek.
+  - [ ] [Responsable: DeepSeek Dev] T1 codec `CastMessage` + framing · T2 `CastChannel` TLS + pin TOFU · T3 `CastSession` (connection, heartbeat, receiver, `LAUNCH CC1AD845`) · T4 `CastMediaChannel` · T5 `CastV2Player` + `ChromecastPlayback` · T6 `CastDiscovery` (`NsdManager`) · T7 `ChromecastStreamServer` con token por sesión.
+  - [ ] [Responsable: Claude PM/QA] Q1 retiro de `media3-cast` y restos de Play Services · Q2 UI en `FrostedDevicesScreen.kt`, `SettingsPages.kt`, `SettingsIndex.kt`, `ChromecastSettingsRow.kt` · Q3 tests y verificación de `CAST-INV-*` · Q4 auditoría y zonas protegidas.
+  - [ ] [Responsable: Antigravity PO] I1 rama `integrate/hu-orch-12` y commits `audit-fork:` por tarea.
+  - Fase 2 (escritorio C++/Qt): fuera del sprint hasta orden del PO.
 
 ---
 
