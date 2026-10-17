@@ -197,8 +197,8 @@ class CastTrustTest {
 
 internal class FakeX509Certificate(
     private val encoded: ByteArray,
-    serial: Long,
-    subject: String
+    val serial: Long,
+    val subject: String
 ) : X509Certificate() {
 
     override fun checkValidity() = Unit
@@ -235,6 +235,8 @@ internal class FakeX509Certificate(
 
     override fun getTBSCertificate(): ByteArray = encoded
 
+    override fun getSignature(): ByteArray = ByteArray(0)
+
     override fun getEncoded(): ByteArray = encoded
 
     override fun verify(key: PublicKey) {
@@ -247,7 +249,13 @@ internal class FakeX509Certificate(
 
     override fun getPublicKey(): PublicKey = DummyPublicKey()
 
-    override fun getType(): String = "X.509"
+    override fun hasUnsupportedCriticalExtension(): Boolean = false
+
+    override fun getCriticalExtensionOIDs(): MutableSet<String>? = null
+
+    override fun getNonCriticalExtensionOIDs(): MutableSet<String>? = null
+
+    override fun getExtensionValue(oid: String?): ByteArray? = null
 
     override fun toString(): String = "FakeX509Certificate($subject)"
 }
