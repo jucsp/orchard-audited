@@ -141,7 +141,7 @@ data class OrchardSettings(
     val betaChannelEnabled: Boolean = false,
     /** Tallest music video picture to fetch, in lines; 0 takes the best available. */
     val videoMaxHeight: Int = DEFAULT_VIDEO_MAX_HEIGHT,
-    /** Translate lyrics to English using a local model or an explicitly selected API. */
+    /** Translate lyrics to English using an explicitly selected API. */
     val translateLyrics: Boolean = false,
     val lyricTranslationQuality: LyricTranslationQuality = LyricTranslationQuality.STANDARD,
     val lyricTranslationProvider: LyricTranslationProvider = LyricTranslationProvider.LOCAL,
@@ -179,6 +179,7 @@ enum class ArtworkSource(val label: String) {
 /** Translation model size; [key] matches the quality column of the shared pack table. */
 enum class LyricTranslationQuality(val key: String) { STANDARD("standard"), HIGH("high") }
 
+/** [LOCAL] is the unset state: the fork ships no offline translation models. */
 enum class LyricTranslationProvider(val key: String, val label: String) {
     LOCAL("local", "Local"), OPENAI("openai", "OpenAI"), CLAUDE("claude", "Claude"),
     GEMINI("gemini", "Gemini"), CUSTOM("custom", "Custom API");

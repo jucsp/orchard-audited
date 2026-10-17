@@ -21,28 +21,23 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-// Lyric translation source, credentials, and downloaded local models.
+// Lyric translation API and its credentials.
 SettingsSection {
     id: root
 
     property bool translationEnabled: true
-    property string quality: "standard"
-    property string provider: "local"
+    property string provider: ""
     property string modelName: ""
     property string endpoint: ""
     property bool hasApiKey: false
     property string credentialMessage: ""
-    // Downloaded packs: { name, code, quality, sizeBytes, credit }.
-    property var installed: []
     property alias enableSwitch: enableSwitch
-    property alias qualityPicker: qualityPicker
     property alias providerPicker: providerPicker
     property alias modelField: modelField
     property alias endpointField: endpointField
     property alias keyField: keyField
     property alias saveKeyButton: saveKeyButton
     property alias removeKeyButton: removeKeyButton
-    property alias packList: packList
 
     title: qsTr("Lyric translation")
     rowSpacing: 0
@@ -51,9 +46,7 @@ SettingsSection {
     SettingsRow {
         iconName: "languages"
         title: qsTr("Translate lyrics to English")
-        description: root.provider === "local"
-            ? qsTr("Orchard detects each song's language and translates it on this computer. Lyrics never leave your computer.")
-            : qsTr("Orchard sends lyric lines to your selected API for translation. Your provider may charge for requests.")
+        description: qsTr("Orchard sends lyric lines to your selected API for translation. Your provider may charge for requests.")
 
         SettingsSwitch {
             id: enableSwitch
@@ -65,19 +58,20 @@ SettingsSection {
     SettingsRow {
         iconName: "plug"
         title: qsTr("Translation source")
-        description: qsTr("Local models are free and private. Choose an API for another translation option.")
+        description: qsTr("Choose the API that translates lyrics.")
 
         SettingsSelect {
             id: providerPicker
             Layout.preferredWidth: 185
-            model: [qsTr("Local"), qsTr("OpenAI"), qsTr("Claude"), qsTr("Gemini"), qsTr("Custom API")]
-            currentIndex: ["local", "openai", "claude", "gemini", "custom"].indexOf(root.provider)
+            model: [qsTr("OpenAI"), qsTr("Claude"), qsTr("Gemini"), qsTr("Custom API")]
+            currentIndex: ["openai", "claude", "gemini", "custom"].indexOf(root.provider)
+            displayText: currentIndex < 0 ? qsTr("Choose") : currentText
             Accessible.name: qsTr("Translation source")
         }
     }
 
     SettingsRow {
-        visible: root.provider !== "local"
+        visible: root.provider.length > 0
         iconName: "sparkles"
         title: qsTr("Model")
         description: qsTr("Enter a model ID supported by your API provider.")
@@ -107,7 +101,7 @@ SettingsSection {
     }
 
     SettingsRow {
-        visible: root.provider !== "local"
+        visible: root.provider.length > 0
         iconName: "keyboard"
         title: qsTr("API key")
         description: root.hasApiKey ? qsTr("Saved in your operating system keychain.")
@@ -138,48 +132,5 @@ SettingsSection {
         Layout.fillWidth: true
         text: root.credentialMessage
         color: "#e6a197"
-    }
-
-    SettingsRow {
-        visible: root.provider === "local"
-        iconName: "sparkles"
-        title: qsTr("Translation quality")
-        description: root.quality === "high"
-            ? qsTr("Larger models with noticeably better lines. About 85 MB per language, roughly 8 seconds per song, and about 300 MB of memory while translating.")
-            : qsTr("Small models that translate a song in a few seconds. About 20 MB per language and 75 MB of memory while translating. Lines are rough.")
-
-        SettingsSegmented {
-            id: qualityPicker
-            currentValue: root.quality
-            model: [
-                { value: "standard", label: qsTr("Standard"), name: qsTr("Standard translation quality") },
-                { value: "high", label: qsTr("High"), name: qsTr("High translation quality") }
-            ]
-        }
-    }
-
-    SettingsRow {
-        visible: root.provider === "local" && root.installed.length === 0
-        iconName: "hard-drive"
-        title: qsTr("No language models downloaded")
-        description: qsTr("Models download when a song needs one.")
-    }
-
-    // The logic layer swaps in a delegate that removes the pack.
-    Repeater {
-        id: packList
-        model: root.provider === "local" ? root.installed : []
-
-        SettingsRow {
-            required property var modelData
-            iconName: "hard-drive"
-            title: modelData.quality === "high" ? qsTr("%1 model (High)").arg(modelData.name)
-                                                : qsTr("%1 model").arg(modelData.name)
-            description: qsTr("%1 on this computer. %2.").arg(qsTr("%1 MB").arg(Math.round(modelData.sizeBytes / 1e6))).arg(modelData.credit)
-
-            SettingsButton {
-                text: qsTr("Remove")
-            }
-        }
     }
 }

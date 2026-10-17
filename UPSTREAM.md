@@ -36,7 +36,9 @@ Rutas donde el fork tiene o tendrá parches. Ningún cambio del upstream las sob
 | `app/src/integrations/lastfm.cpp`, `mobile/.../lastfm/LastfmRepository.kt` | Sin llamadas a `lastfm.sfg545.dev` | INV-3 | activa (HU-ORCH-06) |
 | `services/account/wrangler.production.jsonc` | Worker propio `orchard-account` en `connect.kasper-cloud.com` | INV-3 | activa (HU-ORCH-06) |
 | Telemetría o red en segundo plano desactivada por el fork (H7) | Valores por defecto del fork | INV-6 | _prevista_ |
-| `core/native/translation/translation_pack_table.cpp` | Sin packs alojados en el HuggingFace del autor | INV-3 | activa (H12) |
+| `core/native/translation/translation_pack_table.cpp` | Tabla de packs vacía: sin descargas de modelos (autor ni Helsinki-NLP) | INV-3 | activa (H12, HU-ORCH-09) |
+| Ausencia de `scripts/translation/`; `THIRD_PARTY_NOTICES.md` sin sección de modelos de traducción | Sin herramienta ni atribución de packs de HuggingFace/Helsinki-NLP | INV-3 | activa (HU-ORCH-09) |
+| `app/src/lyrics/translation/lyrics_translator.{h,cpp}`, `app/qml/components/settings/LyricTranslationSettings*.qml`, `mobile/.../ui/screens/SettingsLyrics.kt`, `mobile/.../lyrics/translation/LyricTranslator.kt` | Sin proveedor `local` ni UI de modelos offline; traducción solo por API elegida | INV-6 | activa (HU-ORCH-09) |
 | `app/src/offline/connectivity_monitor.cpp` | Sonda de conectividad solo hacia el Worker propio | INV-6 | activa (H13) |
 | `app/src/integrations/discord.cpp`, `discord_sdk_bridge.cpp`, `mobile/.../discord/DiscordArtwork.kt`, `DiscordPresenceCoordinator.kt`, `buildConfigField DISCORD_APPLICATION_ID` en `mobile/android/app/build.gradle` | Sin Discord App ID del autor | INV-3 | activa (H14) |
 | `mobile/.../connect/app/MainActivity.kt`, `mobile/.../playback/OrchardPlaybackService.kt` | Cast sin inicializar | INV-6 | activa (H15) |

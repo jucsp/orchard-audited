@@ -33,9 +33,6 @@ Row {
     readonly property bool failed: status === "failed"
     readonly property string label: {
         switch (status) {
-        case "downloading":
-            return qsTr("Downloading %1 model · %2%").arg(OrchardTranslation.sourceName)
-                    .arg(Math.round(OrchardTranslation.progress * 100));
         case "translating":
         case "ready":
         case "unsupported":

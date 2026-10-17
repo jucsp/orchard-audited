@@ -24,7 +24,8 @@
 - `services/account/wrangler.production.jsonc`: config de producción del Worker propio (`orchard-account` en `connect.kasper-cloud.com`) (HU-ORCH-06).
 - `services/account/src/party.js`: Durable Object `PartyRoom` (salas de Listening Party con relay WebSocket, transferencia de host y persistencia en `ctx.storage`) + `generateRoomCode()` (HU-ORCH-06).
 - `mobile/.../social/ListeningPartyClient.kt`: `DEFAULT_SERVICE_URL` y `DEFAULT_PARTY_SERVICE_URL` apuntan a `https://connect.kasper-cloud.com` (HU-ORCH-06).
-- `core/native/translation/translation_pack_table.cpp`: solo packs `standard` de Helsinki-NLP; sin `SFG545/orchard-lyric-translation` (H12).
+- `core/native/translation/translation_pack_table.cpp`: `translationPackTable()` devuelve un `std::span` vacío; sin packs del autor (H12) ni de Helsinki-NLP (HU-ORCH-09). Android lee la misma tabla por JNI.
+- Traducción de letras solo por API (HU-ORCH-09): `lyrics_translator` con proveedor vacío por defecto y sin `local`; QML sin calidad ni lista de modelos; Android trata `LyricTranslationProvider.LOCAL` como "sin proveedor" y no traduce.
 - `app/src/offline/connectivity_monitor.cpp`: sonda única a `connect.kasper-cloud.com/.well-known/jwks.json` (H13).
 - `app/src/integrations/discord.cpp`, `discord_sdk_bridge.cpp`, `mobile/.../discord/DiscordArtwork.kt`: sin App ID por defecto; `ORCHARD_DISCORD_APP_ID` (escritorio) y `-PorchardDiscordAppId` (Android) (H14).
 - `mobile/.../MainActivity.kt`, `OrchardPlaybackService.kt`: sin `CastContext` ni `ChromecastPlayback` (H15).
@@ -36,7 +37,8 @@
 - **Licencia del motor adaptativo:** OOL-1.0 en el tag (bloqueo L1); `upstream/main` lo relicencia a PolyForm Shield 1.0.0, lo que desbloquea L1 al promover un tag que lo incluya, conservando el `Required Notice`.
 - **HU-ORCH-02 aplicada:** clave `orchard-fork-1`, servidor del fork y fin del auto-update en segundo plano. `grep` sin `depot.sfg545.dev`/`downloads.sfg545.dev` en `bootstrapper/` y `mobile/`.
 - **HU-ORCH-06 aplicada y desplegada:** cuenta/Connect → `connect.kasper-cloud.com`; auto-update off por defecto y sin sondeo; `artwork.sfg545.dev` y `lastfm.sfg545.dev` neutralizados en escritorio y Android; `providers/apple-music/` no existe en este tag. Worker `orchard-account` desplegado en `connect.kasper-cloud.com` con D1 `orchard-accounts`, secretos cargados y Durable Objects `ConnectHub` y `PartyRoom`.
-- **Contra-auditoría de red (§5):** H12–H15 resueltos en el árbol de trabajo (§5.6). Residual: dependencia `media3-cast` y `MediaTransferReceiver` en el APK sin inicializar; `scripts/translation/emit_packs.py` apunta al repo del autor (solo herramienta).
+- **Contra-auditoría de red (§5):** H12–H15 resueltos en el árbol de trabajo (§5.6). Residual: dependencia `media3-cast` y `MediaTransferReceiver` en el APK sin inicializar.
+- **HU-ORCH-09 en el árbol de trabajo:** sin modelos offline de traducción (`AUDIT.md` §5.7). Verificado: sintaxis C++ con Qt real, `TranslationPacks` en ejecución con tabla vacía (3/3), `qmllint`, `npm test` 76/76. Sin verificar: suite meson y build Android. `scripts/translation/` eliminada y `THIRD_PARTY_NOTICES.md` sin la sección de modelos de traducción (§5.8). Residual: runtime LiteRT/Marian sigue compilado sin packs.
 - **HU-ORCH-07/08 aplicadas:** atribución al autor original y descargo de responsabilidad en `README.md`; purga de Last.fm y Chromecast en las UIs de escritorio y móvil.
 
 ## 5. Gobernanza de actualizaciones del upstream

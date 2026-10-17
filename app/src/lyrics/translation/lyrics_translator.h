@@ -119,7 +119,8 @@ private:
 
   bool m_enabled{false};
   QString m_quality{QStringLiteral("standard")};
-  QString m_provider{QStringLiteral("local")};
+  // Empty until the user picks an API; no offline provider exists.
+  QString m_provider;
   QString m_model;
   QString m_endpoint;
   QString m_apiKey;

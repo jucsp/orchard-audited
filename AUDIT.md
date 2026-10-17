@@ -250,7 +250,7 @@ Acción recomendada cuando el upstream publique un tag estable: repetir esta rev
 | `www.gstatic.com/generate_204`, `www.youtube.com/generate_204` | `app/src/offline/connectivity_monitor.cpp:33` | ✅ Sustituido por `connect.kasper-cloud.com/.well-known/jwks.json` (H13, §5.6) |
 | Google Cast (Play Services) | `MainActivity.kt:54`, `OrchardPlaybackService.kt:193`, `OrchardCastOptionsProvider.kt`, manifest | ✅ Sin inicialización de `CastContext` ni `ChromecastPlayback` (H15, §5.6) |
 | `api.openai.com`, `api.anthropic.com`, `generativelanguage.googleapis.com` | `lyrics_translator.cpp:47-49`, `RemoteLyricTranslation.kt:90-92` | Opt-in, con clave del usuario |
-| `huggingface.co/Helsinki-NLP` | `translation_pack_table.cpp:23` | Bajo demanda, commit fijado + SHA-256 |
+| `huggingface.co/Helsinki-NLP` | `translation_pack_table.cpp` | ✅ Retirado: tabla de packs vacía, sin traducción offline (HU-ORCH-09, §5.7) |
 | `api.github.com/repos/jucsp/orchard-audited` | `UpdateManager.kt:53` | Releases del fork |
 | `ws.audioscrobbler.com` | `services/lastfm` (Worker, no cliente) | Cliente desactivado (`lastfm.cpp` URL vacía) |
 | `jitpack.io`, `codeload.github.com` | `settings.gradle:19`, `scripts/build-qt-webview.py` | Solo en build |
@@ -299,5 +299,49 @@ Acción recomendada cuando el upstream publique un tag estable: repetir esta rev
 **Residual:**
 
 - Dependencia `media3-cast`, `OrchardCastOptionsProvider`, meta-data del manifest y `MediaTransferReceiver` siguen en el APK sin inicializarse. Quitarlos completa HU-ORCH-08 y requiere build Android.
-- `scripts/translation/emit_packs.py` sigue apuntando al repo del autor (solo herramienta de desarrollo, no se ejecuta en runtime).
+- ~~`scripts/translation/emit_packs.py` sigue apuntando al repo del autor~~: carpeta eliminada (§5.8).
 - La sonda de conectividad expone IP y frecuencia al Worker propio cada 15 s. Si cae `connect.kasper-cloud.com`, la app se muestra offline aunque haya red.
+
+### 5.7 Eliminación de Helsinki-NLP y traducción offline (HU-ORCH-09, 2026-10-16)
+
+- **Base:** `63bee8a` + cambios sin commit en el árbol de trabajo. Aplicados por Claude (PM/QA) por instrucción directa del propietario.
+- **Resultado:** el fork no descarga ningún modelo de traducción. La única traducción de letras es por API (OpenAI, Claude, Gemini o API propia), opt-in y con clave del usuario.
+
+| Capa | Archivo | Cambio |
+| --- | --- | --- |
+| Core | `core/native/translation/translation_pack_table.cpp` | Sin `ORCHARD_HELSINKI`, `kHelsinkiCredit` ni los 12 packs. `translationPackTable()` devuelve un `std::span` vacío (un array C++ de tamaño cero no compila). Desktop y Android (JNI `packTable()`) leen la misma tabla |
+| App | `lyrics_translator.h/.cpp` | Proveedor por defecto vacío; `setProvider` y la lectura de `QSettings` ya no aceptan `local`. Sin proveedor: no se lee el keychain y el estado es "Choose a translation source in Settings." |
+| QML | `LyricTranslationSettingsForm.ui.qml`, `LyricTranslationSettings.qml` | Selector con OpenAI, Claude, Gemini y Custom API (muestra "Choose" sin proveedor). Fuera la fila de calidad, la lista de modelos y los textos de traducción local |
+| QML | `DownloadsSectionForm.ui.qml`, `SettingsPanel.ui.qml`, `LyricsTranslateBar.qml` | Sin menciones a modelos de traducción; sin el estado `downloading` |
+| Android | `SettingsLyrics.kt`, `SettingsIndex.kt`, `UiModels.kt` | `LOCAL` fuera del diálogo de selección y tratado como "sin proveedor" ("Choose"). Fuera la calidad y la lista de modelos instalados, y la entrada de búsqueda "Translation quality" |
+| Android | `LyricTranslator.kt` | Con `LOCAL` la traducción queda desactivada: no corre el plan nativo ni se resuelven packs |
+| Tests | `tests/lyrics_translation_test.cpp` | `packNeedsMarkerAndSizes` y `qualityPicksPack` reemplazados por `packTableIsEmpty`: nada resuelve, nada se instala y `ensure()` emite `failed` sin crear la carpeta de staging |
+
+**Verificación:**
+
+- ✅ `git grep` sin `huggingface.co/Helsinki-NLP`, `ORCHARD_HELSINKI` ni `kHelsinkiCredit` en código de la app.
+- ✅ `npm test` en `services/account`: 76/76.
+- ✅ `g++ -std=c++20 -fsyntax-only -Wall -Wextra` con Qt 6.11 real de `translation_pack_table.cpp`, `translation_packs.cpp`, `lyrics_translator.cpp` y `tests/lyrics_translation_test.cpp` (stubs mínimos solo para `qtkeychain` y `litert`, que no están instalados).
+- ✅ Prueba en ejecución de `TranslationPacks` real enlazada contra la tabla vacía (Qt Test, fuera del repo): 3/3. Cubre `find`, `resolve`, `available`, `list`, `installedBytes`, `ensure`, `cancel` y `remove`.
+- ✅ `qmllint` sin errores en los 5 QML modificados.
+- ❌ Sin verificar: suite C++ completa (`meson` no instalado) y build Android/Kotlin (sin Gradle/SDK).
+
+**Residual:**
+
+- El runtime offline (`TranslationPacks`, `TranslationWorker`, `MarianModel`, LiteRT, JNI de traducción) sigue compilado pero no tiene packs que cargar. Quitarlo entero es un cambio mayor en meson y CMake de Android.
+- ~~`scripts/translation/` y la atribución OPUS-MT de `THIRD_PARTY_NOTICES.md`~~: eliminados (§5.8).
+
+### 5.8 Limpieza de residuos de Helsinki-NLP (HU-ORCH-09, 2026-10-16)
+
+- **Base:** `63bee8a` + cambios sin commit en el árbol de trabajo. Aplicados por Claude (PM/QA) por instrucción directa del propietario.
+
+| Archivo | Cambio |
+| --- | --- |
+| `scripts/translation/` | Eliminada entera (`README.md`, `build_packs.py`, `check_pack.py`, `convert_marian.py`, `emit_packs.py`). Convertía modelos de HuggingFace/Helsinki-NLP y generaba la tabla apuntando a `SFG545/orchard-lyric-translation`. Ningún archivo de build, CI ni doc la referencia |
+| `THIRD_PARTY_NOTICES.md` | Fuera la sección "Lyric translation models" (OPUS-MT de Helsinki-NLP, `Mitsua/elan-mt-tiny-ja-en` y el repo HF del autor): el fork no descarga ni distribuye esos modelos. Se conserva la sección LiteRT porque el runtime sigue vendorizado y se empaqueta |
+
+**Verificación:**
+
+- ✅ `git grep -i` sin `helsinki`, `opus-mt`, `elan-mt`, `orchard-lyric-translation` ni `scripts/translation` fuera de la documentación de gobernanza (`AUDIT.md`, `technical_memory.md`, `sprint_board.md`, `UPSTREAM.md`). Coincidencias restantes sin relación: `helsinki` en `models/docs-search/vocab.txt` (vocabulario del modelo de búsqueda), `orchard-lyric-translation/1.0` como valor de `x-goog-api-client` hacia Gemini (`lyrics_translator.cpp:446`, `RemoteLyricTranslation.kt:55`) y el nombre de conexión SQLite local en `translation_store.cpp:32`.
+- ✅ `npm test` en `services/account`: 76/76.
+- Sin código compilado afectado: no aplica build C++ ni Android.

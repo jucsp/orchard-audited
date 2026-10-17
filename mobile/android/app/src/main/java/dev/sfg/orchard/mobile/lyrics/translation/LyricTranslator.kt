@@ -120,7 +120,7 @@ class LyricTranslator(
     init {
         scope.launch(Dispatchers.IO) { mutableInstalled.value = packs.installedPacks() }
         val wanted = settings.map {
-            Config(it.translateLyrics && (it.lyricTranslationProvider != LyricTranslationProvider.LOCAL || TranslationNative.available),
+            Config(it.translateLyrics && it.lyricTranslationProvider != LyricTranslationProvider.LOCAL,
                 it.lyricTranslationQuality.key, it.lyricTranslationProvider,
                 it.lyricTranslationModels[it.lyricTranslationProvider.key].orEmpty(), it.lyricTranslationEndpoint)
         }

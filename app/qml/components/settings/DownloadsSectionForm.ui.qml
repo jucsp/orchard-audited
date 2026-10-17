@@ -20,7 +20,7 @@
 import QtQuick
 import QtQuick.Layouts
 
-// Offline listening: download quality, animated covers, storage, and lyric translation models.
+// Offline listening: download quality, animated covers, storage, and lyric translation.
 ColumnLayout {
     id: root
 

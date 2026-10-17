@@ -117,46 +117,26 @@ private slots:
     QVERIFY(store.lookup(QStringLiteral("rev2"), {QStringLiteral("사랑해")}).isEmpty());
   }
 
-  void packNeedsMarkerAndSizes() {
+  // The fork ships no packs: nothing resolves, installs, or reaches the network.
+  void packTableIsEmpty() {
     QTemporaryDir dir;
     qputenv("ORCHARD_TRANSLATION_DIR", dir.path().toUtf8());
     QNetworkAccessManager network;
     TranslationPacks packs(&network);
-    const auto *pack = TranslationPacks::find(QStringLiteral("kor-eng"));
-    QVERIFY(pack);
+    QVERIFY(translationPackTable().empty());
+    QVERIFY(!TranslationPacks::find(QStringLiteral("kor-eng")));
+    QVERIFY(!TranslationPacks::resolve(QStringLiteral("kor"), QStringLiteral("standard")));
+    QVERIFY(!TranslationPacks::resolve(QStringLiteral("kor"), QStringLiteral("high")));
     QVERIFY(!packs.installed(QStringLiteral("kor-eng")));
-    QVERIFY(packs.available(QStringLiteral("kor-eng")));
+    QVERIFY(!packs.available(QStringLiteral("kor-eng")));
+    QVERIFY(packs.list().isEmpty());
+    QCOMPARE(packs.installedBytes(), qint64(0));
 
-    const QDir target(packs.directory(QStringLiteral("kor-eng")));
-    QVERIFY(QDir().mkpath(target.path()));
-    for (const auto &file : pack->files) {
-      QFile out(target.filePath(QLatin1String(file.name)));
-      QVERIFY(out.open(QIODevice::WriteOnly));
-      QVERIFY(out.resize(file.size));
-    }
-    QVERIFY(!packs.installed(QStringLiteral("kor-eng")));
-    QFile marker(target.filePath(QStringLiteral("pack-revision")));
-    QVERIFY(marker.open(QIODevice::WriteOnly));
-    marker.write(pack->revision);
-    marker.close();
-    QVERIFY(packs.installed(QStringLiteral("kor-eng")));
-    QVERIFY(packs.installedBytes() > 20'000'000);
-
-    packs.remove(QStringLiteral("kor-eng"));
-    QVERIFY(!packs.installed(QStringLiteral("kor-eng")));
+    QSignalSpy failed(&packs, &TranslationPacks::failed);
+    packs.ensure(QStringLiteral("kor-eng"));
+    QCOMPARE(failed.size(), 1);
+    QVERIFY(!QDir(packs.directory(QStringLiteral("kor-eng")) + QStringLiteral(".partial")).exists());
     qunsetenv("ORCHARD_TRANSLATION_DIR");
-  }
-
-  void qualityPicksPack() {
-    for (const auto &pack : translationPackTable()) {
-      const QString source = QLatin1String(pack.source);
-      // Every language has a standard pack to fall back on.
-      QVERIFY(TranslationPacks::resolve(source, QStringLiteral("standard")));
-      const auto *high = TranslationPacks::resolve(source, QStringLiteral("high"));
-      QVERIFY(high);
-      QCOMPARE(QLatin1String(high->source), source);
-    }
-    QVERIFY(!TranslationPacks::resolve(QStringLiteral("por"), QStringLiteral("standard")));
   }
 
   // Needs a real pack and libLiteRt; set ORCHARD_TEST_KOR_PACK to a kor-eng folder to run.

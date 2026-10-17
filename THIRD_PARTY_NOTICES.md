@@ -9,33 +9,11 @@ Its included open source notices are preserved in
 
 ## LiteRT
 
-Orchard runs on-device lyric translation with Google LiteRT 2.2.0. The C API
+Orchard bundles the Google LiteRT 2.2.0 runtime. The C API
 headers from `litert_cc_sdk.zip` and the prebuilt runtimes from
 `storage.googleapis.com/litert/binaries/2.2.0` are under `vendor/litert`.
 LiteRT is licensed under the Apache License 2.0, preserved in
 [`vendor/litert/LICENSE`](vendor/litert/LICENSE) and shipped with packages.
-
-## Lyric translation models
-
-Translation models are not bundled; Orchard downloads one language pack the
-first time a song in that language is translated, and checks each file against
-a pinned SHA-256.
-
-- Standard Korean, Chinese, Russian, Arabic, Greek, Turkish, French, German,
-  Spanish, Italian, Dutch and Catalan packs are the OPUS-MT tiny models by
-  Helsinki-NLP (`Helsinki-NLP/opus-mt_tiny_<lang>-eng`), Apache License 2.0,
-  fetched unchanged from Hugging Face at pinned commits.
-- The standard Japanese pack is
-  [`Mitsua/elan-mt-tiny-ja-en`](https://huggingface.co/Mitsua/elan-mt-tiny-ja-en)
-  by the ELAN MITSUA Project / Abstract Engine, CC BY-SA 4.0. The converted
-  model is distributed under the same license.
-- High packs are the OPUS-MT base models by Helsinki-NLP
-  (`Helsinki-NLP/opus-mt-<lang>-en`, and `opus-mt-grk-en` for Greek). The
-  Chinese and Russian models are CC BY 4.0; the rest are Apache License 2.0.
-
-Orchard converts the Japanese and High packs to int8 LiteRT with
-[`scripts/translation`](scripts/translation) and hosts them at
-[`SFG545/orchard-lyric-translation`](https://huggingface.co/SFG545/orchard-lyric-translation).
 
 ## Lucide Icons
 

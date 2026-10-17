@@ -25,6 +25,10 @@ _(vacío)_
   - Backup de rol: Claude (PM/QA) alcanzó su rate limit (resets 6:20pm); DeepSeek Dev asumió las funciones de PM/QA para implementar y verificar esta HU.
   - Publicación directa: el job `publish` corre sin variable ni *environment* de aprobación cuando `github.repository == 'jucsp/orchard-audited'`.
   - Pendiente: primera ejecución en Actions, firma GPG del RPM y manifiestos firmados compatibles con el bootstrapper (REQ-A9, A10).
+- [ ] **HU-ORCH-09: Eliminación total de Helsinki-NLP y modelos offline de traducción** `[Responsable: Claude PM/QA]`
+  - Hecho: tabla de packs vacía (core, compartida con Android por JNI); proveedor por defecto vacío y sin `local` en escritorio; QML y Android sin selector `Local`, sin calidad y sin lista de modelos; test `packTableIsEmpty` (`AUDIT.md` §5.7).
+  - QA: `npm test` 76/76; `g++ -fsyntax-only` con Qt real; `TranslationPacks` en ejecución con tabla vacía 3/3; `qmllint` sin errores.
+  - Pendiente: commit, suite C++ con meson y build Android/Kotlin.
 
 ---
 

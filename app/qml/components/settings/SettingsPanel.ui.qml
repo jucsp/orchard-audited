@@ -31,7 +31,7 @@ RowLayout {
     readonly property var sections: [
         { key: "general", label: qsTr("General"), icon: "sliders-horizontal", blurb: qsTr("Startup behavior and your account.") },
         { key: "playback", label: qsTr("Playback"), icon: "audio-lines", blurb: qsTr("Quality, audio engine, and transitions between songs.") },
-        { key: "downloads", label: qsTr("Downloads"), icon: "download", blurb: qsTr("Offline listening, download quality, storage, and lyric translation models.") },
+        { key: "downloads", label: qsTr("Downloads"), icon: "download", blurb: qsTr("Offline listening, download quality, storage, and lyric translation.") },
         { key: "appearance", label: qsTr("Appearance"), icon: "palette", blurb: qsTr("Artwork, backgrounds, and player bar details.") },
         { key: "integrations", label: qsTr("Integrations"), icon: "plug", blurb: qsTr("Connect Orchard to other apps.") },
         { key: "shortcuts", label: qsTr("Shortcuts"), icon: "keyboard", blurb: qsTr("Keyboard shortcuts for playback and navigation.") },

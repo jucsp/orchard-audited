@@ -86,7 +86,7 @@ LyricsTranslator::LyricsTranslator(LyricsController *lyrics, QObject *parent)
     m_provider = savedProvider;
   m_model = QSettings().value(QStringLiteral("lyrics/model/%1").arg(m_provider)).toString();
   m_endpoint = QSettings().value(QStringLiteral("lyrics/customEndpoint")).toString();
-  if (m_provider != QStringLiteral("local")) loadApiKey();
+  if (!m_provider.isEmpty()) loadApiKey();
 
   m_worker = new TranslationWorker(m_generation);
   m_worker->moveToThread(&m_thread);
@@ -148,7 +148,7 @@ void LyricsTranslator::setQuality(const QString &quality) {
 }
 
 void LyricsTranslator::setProvider(const QString &provider) {
-  if (!QStringList{QStringLiteral("local"), QStringLiteral("openai"), QStringLiteral("claude"), QStringLiteral("gemini"), QStringLiteral("custom")}.contains(provider) || m_provider == provider)
+  if (!QStringList{QStringLiteral("openai"), QStringLiteral("claude"), QStringLiteral("gemini"), QStringLiteral("custom")}.contains(provider) || m_provider == provider)
     return;
   ++m_keyGeneration;
   m_packs->cancel();
@@ -160,7 +160,7 @@ void LyricsTranslator::setProvider(const QString &provider) {
   QSettings().setValue(kProviderKey, provider);
   m_model = QSettings().value(QStringLiteral("lyrics/model/%1").arg(provider)).toString();
   emit providerChanged();
-  if (provider != QStringLiteral("local")) loadApiKey();
+  loadApiKey();
   m_key.clear();
   sync();
 }
@@ -206,7 +206,7 @@ void LyricsTranslator::loadApiKey() {
 }
 
 void LyricsTranslator::saveApiKey(const QString &key) {
-  if (m_provider == QStringLiteral("local")) return;
+  if (m_provider.isEmpty()) return;
   const QString value = key.trimmed();
   if (value.isEmpty()) return;
   const int generation = ++m_keyGeneration;
@@ -236,7 +236,7 @@ void LyricsTranslator::saveApiKey(const QString &key) {
 }
 
 void LyricsTranslator::removeApiKey() {
-  if (m_provider == QStringLiteral("local")) return;
+  if (m_provider.isEmpty()) return;
   const int generation = ++m_keyGeneration;
   m_apiKey.clear();
   m_keyLoading = false;
@@ -366,6 +366,7 @@ void LyricsTranslator::start() {
     return;
   }
   if (m_provider != QStringLiteral("local")) {
+    if (m_provider.isEmpty()) { setStatus(QStringLiteral("failed"), tr("Choose a translation source in Settings.")); return; }
     if (m_model.isEmpty()) { setStatus(QStringLiteral("failed"), tr("Enter a translation model in Settings.")); return; }
     if (m_keyLoading) { setStatus(QStringLiteral("idle"), tr("Checking API key")); return; }
     if (m_apiKey.isEmpty() && m_provider != QStringLiteral("custom")) {

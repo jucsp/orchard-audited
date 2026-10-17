@@ -24,24 +24,15 @@ LyricTranslationSettingsForm {
     id: root
 
     translationEnabled: OrchardTranslation.enabled
-    quality: OrchardTranslation.quality
     provider: OrchardTranslation.provider
     modelName: OrchardTranslation.model
     endpoint: OrchardTranslation.endpoint
     hasApiKey: OrchardTranslation.hasApiKey
     credentialMessage: OrchardTranslation.credentialMessage
-    installed: installedPacks()
-
-    // Untyped so qmlcachegen leaves the QVariantList alone.
-    function installedPacks() {
-        const packs = OrchardTranslation.packs;
-        return packs ? packs.filter(pack => pack.installed) : [];
-    }
 
     enableSwitch.onToggled: OrchardTranslation.enabled = enableSwitch.checked
-    qualityPicker.onPicked: value => OrchardTranslation.quality = value
     providerPicker.onActivated: index => {
-        OrchardTranslation.provider = ["local", "openai", "claude", "gemini", "custom"][index];
+        OrchardTranslation.provider = ["openai", "claude", "gemini", "custom"][index];
         keyField.clear();
     }
     modelField.onEditingFinished: OrchardTranslation.model = modelField.text
@@ -51,19 +42,4 @@ LyricTranslationSettingsForm {
         keyField.clear();
     }
     removeKeyButton.onClicked: OrchardTranslation.removeApiKey()
-
-    packList.delegate: SettingsRow {
-        id: packRow
-        required property var modelData
-        iconName: "hard-drive"
-        title: modelData.quality === "high" ? qsTr("%1 model (High)").arg(modelData.name)
-                                            : qsTr("%1 model").arg(modelData.name)
-        description: qsTr("%1 on this computer. %2.").arg(qsTr("%1 MB").arg(Math.round(modelData.sizeBytes / 1e6))).arg(modelData.credit)
-
-        SettingsButton {
-            text: qsTr("Remove")
-            Accessible.name: qsTr("Remove the %1").arg(packRow.title)
-            onClicked: OrchardTranslation.removePack(modelData.code)
-        }
-    }
 }
