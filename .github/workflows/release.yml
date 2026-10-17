@@ -347,9 +347,9 @@ jobs:
           java-version: '17'
           distribution: temurin
           cache: gradle
-      - name: Install Rust Android target and cargo-ndk
+      - name: Install Rust Android targets and cargo-ndk
         run: |
-          rustup toolchain install stable --profile minimal --target aarch64-linux-android
+          rustup toolchain install stable --profile minimal --target aarch64-linux-android,x86_64-linux-android
           rustup default stable
           cargo install cargo-ndk --locked
       # cargo-ndk reads ANDROID_NDK_HOME, which on the runner points at its default NDK.
