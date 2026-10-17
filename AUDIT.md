@@ -373,7 +373,7 @@ Acción recomendada cuando el upstream publique un tag estable: repetir esta rev
 
 ### 5.10 Re-implementación de Chromecast con CastV2 propio (HU-ORCH-12, 2026-10-17)
 
-- **Base:** `d432ff5`. Solo documentación; no hay código en este paso.
+- **Base:** `d432ff5` (contrato y decisión). Implementación en `integrate/hu-orch-12` hasta `d228910`.
 - **Contrato:** `SDD-chromecast-castv2.md` v1.0 (invariantes `CAST-INV-1` a `CAST-INV-9`).
 - **Tipo:** cambio del fork sobre una zona protegida propia (H15, INV-6). No viene del upstream, pero se registra con la plantilla de la Regla 4 porque revierte una decisión de HU-ORCH-08.
 
@@ -387,4 +387,62 @@ Acción recomendada cuando el upstream publique un tag estable: repetir esta rev
 - Recomendación del Swarm: Opción B. Es la única que da la función sin binarios cerrados ni servidores externos.
 - Decisión del propietario: **Opción B aprobada** (2026-10-17). Alcance aprobado: Android y escritorio, incluidos parlantes Google Home/Nest Mini. La fase 2 (escritorio) se abre con orden explícita del PO.
 
-**Pendiente para cerrar C1:** implementación T1–T7 y Q1–Q2, informe QA (Q3) en esta sección con ✅/❌ por cada `CAST-INV` y por cada criterio de `SDD-chromecast-castv2.md` §6. Hasta entonces, H15 se mantiene: no se inicializa nada de cast al arrancar.
+- **Estado: RESUELTO Y CERRADO** (2026-10-17). Opción B ejecutada en `integrate/hu-orch-12` (`70175ed..d228910`, 9 commits `audit-fork:`, uno por tarea). H15 sigue vigente: nada de cast se inicializa al arrancar. El cierre es del conflicto; llevar la rama a `audited` sigue bloqueado por los pendientes de §5.10.3.
+
+#### 5.10.1 Informe QA de invariantes (Q3)
+
+- **Base:** `d228910` + dos correcciones de QA sin commit (abajo). Método: revisión estática del diff `d432ff5..d228910` y `git grep` sobre `mobile/`. Esta máquina no tiene Android SDK ni `kotlinc`: no se compiló ni se ejecutó ningún test.
+
+| Invariante | Resultado | Evidencia |
+| --- | --- | --- |
+| CAST-INV-1 Sin dependencias propietarias | ✅ estático | `build.gradle` sin `media3-cast`; manifest sin `OPTIONS_PROVIDER_CLASS_NAME` ni `MediaTransferReceiver`; sin `ChromecastMediaItemConverter.kt` ni `OrchardCastOptionsProvider.kt`. `git grep -iE 'com\.google\.android\.gms\|play-services\|mediarouter\|media3-cast'` en `mobile/` solo devuelve la meta-data `com.google.android.gms.car.application` de Android Auto, que es una clave del manifest y no una dependencia (queda excluida de la verificación). Falta `./gradlew :app:dependencies --configuration releaseRuntimeClasspath` |
+| CAST-INV-2 Sin servidores externos | ✅ | El paquete `cast` solo abre: `NsdManager` (mDNS), `SSLSocket` al IP:puerto resuelto y validado con `parsePrivateIpv4` (sin DNS), y el `ServerSocket` local de `ChromecastStreamServer`. Única URL construida: `http://<ipv4-lan>:<puerto>/cast/<token>/<mediaId>`. Las carátulas se pasan tal cual al receptor (§4.6). Sin hosts del autor (`sfg545`, `depot.`) |
+| CAST-INV-3 Opt-in | ✅ | `MainActivity.kt` sin referencias a cast. `OrchardPlaybackService.onCreate` solo registra un `CastHost`; `ChromecastPlayback` se construye en `castPlayback()` al conectar. `CastDiscovery` crea `NsdManager` y `MulticastLock` de forma perezosa; `discoverServices` y `acquire()` solo desde `CastPicker.search()` (botón Buscar). Se detiene a los 30 s (`DEFAULT_TIMEOUT_MS`), al pulsar Detener o al salir de la pantalla (`DisposableEffect`) |
+| CAST-INV-4 Servidor de stream efímero | ✅ con observación | Una instancia por sesión en `ChromecastPlayback.connectToDevice` con `receiverIp = device.host`; se cierra en `teardown`. Token de 16 bytes con `SecureRandom`; IP ajena → 404 antes de leer la petición; token o ruta inválidos → 404; métodos distintos de `GET`/`HEAD` → 405; `close()` corta conexiones vivas. Observación: `ServerSocket(0)` escucha en todas las interfaces, no solo en la IPv4 de la LAN; el filtro por `receiverIp` lo compensa |
+| CAST-INV-5 App ID fijo | ✅ | `CastSession.APP_ID_DEFAULT_MEDIA_RECEIVER = "CC1AD845"` y test de la constante. `git grep -i cast_app_id` vacío en `mobile/` |
+| CAST-INV-6 Sin telemetría, logs saneados | ✅ tras corrección | Los `Log.w` de `ChromecastPlayback` solo registran el tipo de excepción. **Corregido en QA:** los dos `Log.w` de `ChromecastStreamServer` pasaban el `Throwable` completo, cuyo mensaje puede llevar la URL de origen o el `mediaId`; ahora solo el tipo. Sin otras llamadas a `Log`/`println` en el paquete |
+| CAST-INV-7 Solo IP privada y pin TOFU | ✅ | `parsePrivateIpv4` acepta `10/8`, `172.16/12`, `192.168/16` y `169.254/16` en forma canónica; rechaza `100.64/10`, loopback, multicast y públicas. Se aplica en el parseo del TXT y en `CastChannel.open`. `PinningTrustManager` sin CA del sistema, guarda SHA-256 por `id` en el primer uso y aborta con `CastSecurityException` si cambia. Persistencia en `SharedPreferencesCastTrustStore` (`orchard_cast_tofu_pins`, `commit()` síncrono, `allowBackup="false"`) |
+| CAST-INV-8 Límites y cierres limpios | ✅ | `MAX_MESSAGE_SIZE = 65536` al codificar, al leer la longitud del frame (bit alto incluido) y en cada campo length-delimited. Varints de longitud/tag limitados a 5 bytes; grupos desconocidos y JSON con máximo 32 niveles de anidamiento; JSON inválido o frame mal formado cierran el canal |
+| CAST-INV-9 Archivos < 500 líneas y cabeceras | ✅ | Archivo mayor: `CastV2Player.kt` con 499. Los 9 archivos nuevos de `cast/`, `CastControls.kt` y los 10 tests nuevos de `cast/` llevan `SPDX-License-Identifier: AGPL-3.0-or-later`; los modificados del upstream (`ChromecastPlayback.kt`, `ChromecastStreamServer.kt`, `ChromecastSettingsRow.kt`) conservan la de SFG545 |
+
+**Corregido en QA (sin commit):**
+
+- `res/values/styles.xml`: fuera `<item name="mediaRouteTheme">@style/Theme.MediaRouter</item>`. El atributo y el estilo vienen de `androidx.mediarouter`, que llegaba solo por `media3-cast`; sin esa dependencia, AAPT habría fallado al enlazar recursos. Ningún `git grep` previo lo detectó porque buscaba `androidx.mediarouter`.
+- `playback/ChromecastStreamServer.kt`: logs con solo el tipo de excepción (CAST-INV-6) y KDoc ajustado al ciclo de vida por sesión.
+
+#### 5.10.2 Suite de tests JVM
+
+95 tests en 9 clases, más 3 archivos de soporte (`CastSessionTestSupport.kt`, `CastMediaTestSupport.kt` y fakes en línea). No ejecutados en local.
+
+| Clase | Tests | Cubre |
+| --- | --- | --- |
+| `CastMessageTest` | 18 | Codec proto2 contra `tests/fixtures/castv2/*.hex`, campos desconocidos, varints largos, límite exacto 65536, bytes sobrantes, grupos anidados |
+| `CastTrustTest` | 14 | Rangos RFC 1918/link-local y bordes, CGNAT, literales no canónicos, pin en primer uso, coincidencia, cambio, pin por dispositivo |
+| `CastChannelTest` | 15 | Framing con socket falso, correlación por `requestId` y timeout, `requestId: 0`, frame > 64 KiB, longitud con bit alto, cuerpo mal formado, EOF con `onClose` único |
+| `CastSessionTest` | 11 | `CONNECT` → `GET_STATUS` → `LAUNCH CC1AD845`, reutilización de la app, `SET_VOLUME`, `PING`/`PONG`, `CLOSE` entrante, JSON inválido, reconexión exitosa y fallida |
+| `CastMediaChannelTest` | 9 | `LOAD` con el JSON de §4.5, `PLAY`/`PAUSE`/`SEEK`/`STOP`/`GET_STATUS` con `mediaSessionId`, `LOAD_FAILED`/`INVALID_REQUEST` |
+| `CastMediaChannelEdgeTest` | 6 | `FINISHED` una vez por `mediaSessionId`, `duration` conservada, `status` vacío, posiciones no finitas, comandos tras reconexión |
+| `CastDiscoveryTest` | 11 | `CastTxtParser`: `id` obligatorio, `fn` con fallback, `ca` decimal/hex, IP no privada rechazada, puertos de grupo `32xxx` |
+| `ChromecastStreamServerTest` | 8 | Token de 32 hex, token inválido y ruta desconocida → 404, IP ajena → 404, IP del receptor y sin filtro llegan al resolver, `close()` deja de aceptar y corta conexiones en espera |
+| `SharedPreferencesCastTrustStoreTest` | 3 | Pin que sobrevive a una instancia nueva, apertura perezosa de las preferencias, pin previo que rechaza otro certificado |
+
+Sin tests: `CastDiscovery` (depende de `NsdManager`), `CastV2Player` y `CastControls` (dependen de `Looper`/Media3) y la UI Compose.
+
+#### 5.10.3 Criterios de aceptación (`SDD-chromecast-castv2.md` §6)
+
+| Criterio | Resultado |
+| --- | --- |
+| Árbol de dependencias de release sin `gms`/`play-services`/`mediarouter`; APK sin `com.google.android.gms.cast` | ⏳ estático ✅; falta `:app:dependencies` y revisar el APK en Actions |
+| Sin tráfico mDNS ni sockets de cast al arrancar | ✅ estático; ⏳ captura con `tcpdump` en QA manual |
+| Descubre Chromecast/Google TV, Nest/Home Mini y grupo multizona con `fn` | ⏳ QA manual del propietario |
+| Conecta, lanza `CC1AD845` y reproduce desde la posición del teléfono | ⏳ QA manual |
+| Play, pausa, seek, siguiente/anterior y volumen desde app y notificación | ⏳ QA manual |
+| Avance automático al terminar una pista | ✅ tests de `FINISHED`; ⏳ QA manual |
+| Desconectar devuelve al teléfono y cierra el servidor | ✅ estático (`teardown`); ⏳ QA manual |
+| Corte de Wi-Fi o apagado termina la sesión en ≤ 20 s | ❌ riesgo: 15 s sin tráfico más un reintento con timeout de conexión puede superar 20 s. Medir en QA manual; si falla, sin reintento cuando el socket cae por timeout |
+| Servidor rechaza token inválido e IP ajena | ✅ tests (no ejecutados) |
+| Certificado distinto para el mismo `id` aborta con aviso | ✅ tests (no ejecutados) y mensaje propio en `ChromecastPlayback` |
+| Tests JVM T1–T7 en verde; `assembleRelease` en verde en Actions | ❌ no ejecutados: sin SDK en local y la rama no se ha corrido en Actions |
+| `AUDIT.md` con informe QA y C1 cerrado; `UPSTREAM.md` con zonas activas | ✅ |
+
+**Bloqueantes para llevar `integrate/hu-orch-12` a `audited`:** `testDebugUnitTest`, `:app:dependencies --configuration releaseRuntimeClasspath` y `assembleRelease` en verde en Actions, y la prueba manual de §6 registrada por el propietario. Pendiente aparte: decisión del propietario sobre el titular del copyright de los archivos nuevos (hoy `SFG545`).

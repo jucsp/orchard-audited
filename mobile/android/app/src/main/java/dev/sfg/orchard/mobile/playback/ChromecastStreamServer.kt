@@ -49,7 +49,7 @@ import okhttp3.Request
  * A receiver cannot open the app-only `orchard://` URI, while handing it a short-lived YouTube URL
  * loses the exact request headers that URL was minted for. This tiny, capability-URL server
  * resolves on demand and relays byte ranges with the correct identity. It deliberately exposes no
- * index and rotates its unguessable token every time the playback service starts.
+ * index, answers only the connected receiver and gets a fresh unguessable token per Cast session.
  */
 class ChromecastStreamServer(
     context: Context,
@@ -94,7 +94,7 @@ class ChromecastStreamServer(
                             runCatching { socket.close() }
                         }
                 } catch (error: Exception) {
-                    if (running.get()) Log.w(TAG, "Cast stream accept failed", error)
+                    if (running.get()) Log.w(TAG, "Cast stream accept failed: ${error.javaClass.simpleName}")
                 }
             }
         }
@@ -161,7 +161,7 @@ class ChromecastStreamServer(
                 }
             }
             .onFailure { error ->
-                Log.w(TAG, "Cast stream request failed", error)
+                Log.w(TAG, "Cast stream request failed: ${error.javaClass.simpleName}")
                 runCatching { writeError(output, 502, "Bad Gateway") }
             }
         runCatching { output.flush() }

@@ -28,7 +28,7 @@
 - Traducción de letras solo por API (HU-ORCH-09): `lyrics_translator` con proveedor vacío por defecto y sin `local`; QML sin calidad ni lista de modelos; Android trata `LyricTranslationProvider.LOCAL` como "sin proveedor" y no traduce.
 - `app/src/offline/connectivity_monitor.cpp`: sonda única a `connect.kasper-cloud.com/.well-known/jwks.json` (H13).
 - `app/src/integrations/discord.cpp`, `discord_sdk_bridge.cpp`, `mobile/.../discord/DiscordArtwork.kt`: sin App ID por defecto; `ORCHARD_DISCORD_APP_ID` (escritorio) y `-PorchardDiscordAppId` (Android) (H14).
-- `mobile/.../MainActivity.kt`, `OrchardPlaybackService.kt`: sin `CastContext` ni `ChromecastPlayback` (H15).
+- `mobile/.../MainActivity.kt`, `OrchardPlaybackService.kt`: sin `CastContext`; `ChromecastPlayback` solo se construye al elegir un dispositivo (H15, CAST-INV-3).
 - UI de escritorio/móvil: Last.fm purgado de `IntegrationsSection.ui.qml`, `SettingsConnections.kt` y `SettingsIndex.kt`; Chromecast purgado de `FrostedDevicesScreen.kt`, `SettingsPages.kt` y `SettingsIndex.kt` (HU-ORCH-08).
 
 ## 4. Estado de auditoría
@@ -37,7 +37,7 @@
 - **Licencia del motor adaptativo:** OOL-1.0 en el tag (bloqueo L1); `upstream/main` lo relicencia a PolyForm Shield 1.0.0, lo que desbloquea L1 al promover un tag que lo incluya, conservando el `Required Notice`.
 - **HU-ORCH-02 aplicada:** clave `orchard-fork-1`, servidor del fork y fin del auto-update en segundo plano. `grep` sin `depot.sfg545.dev`/`downloads.sfg545.dev` en `bootstrapper/` y `mobile/`.
 - **HU-ORCH-06 aplicada y desplegada:** cuenta/Connect → `connect.kasper-cloud.com`; auto-update off por defecto y sin sondeo; `artwork.sfg545.dev` y `lastfm.sfg545.dev` neutralizados en escritorio y Android; `providers/apple-music/` no existe en este tag. Worker `orchard-account` desplegado en `connect.kasper-cloud.com` con D1 `orchard-accounts`, secretos cargados y Durable Objects `ConnectHub` y `PartyRoom`.
-- **Contra-auditoría de red (§5):** H12–H15 resueltos en el árbol de trabajo (§5.6). Residual: dependencia `media3-cast` y `MediaTransferReceiver` en el APK sin inicializar.
+- **Contra-auditoría de red (§5):** H12–H15 resueltos en el árbol de trabajo (§5.6). El residual `media3-cast`/`MediaTransferReceiver` se retira en HU-ORCH-12 (§8).
 - **HU-ORCH-09 en el árbol de trabajo:** sin modelos offline de traducción (`AUDIT.md` §5.7). Verificado: sintaxis C++ con Qt real, `TranslationPacks` en ejecución con tabla vacía (3/3), `qmllint`, `npm test` 76/76. Sin verificar: suite meson y build Android. `scripts/translation/` eliminada y `THIRD_PARTY_NOTICES.md` sin la sección de modelos de traducción (§5.8). Residual: runtime LiteRT/Marian sigue compilado sin packs.
 - **HU-ORCH-07/08 aplicadas:** atribución al autor original y descargo de responsabilidad en `README.md`; purga de Last.fm y Chromecast en las UIs de escritorio y móvil.
 
@@ -63,5 +63,26 @@ Reglas canónicas en `AGENTS.md`; `CLAUDE.md` y `GEMINI.md` lo importan y añade
 - **Listening Party (salas compartidas):** implementado en `services/account/src/party.js` (Durable Object `PartyRoom` con relay WebSocket, transferencia de host, persistencia y código de sala sin caracteres ambiguos). Desplegado en `connect.kasper-cloud.com`. Suite de pruebas unitarias 100% pasando (76/76 tests en `services/account`). Cliente Android `ListeningPartyClient.kt` reconfigurado al dominio propio. Verificación en vivo completada exitosamente.
 - **Purga de Last.fm:** UI escritorio (`IntegrationsSection.ui.qml`) y móvil (`SettingsConnections.kt`, `SettingsIndex.kt`). El endpoint backend quedó neutralizado previamente en HU-ORCH-06.
 - **Purga de Chromecast (móvil):** `FrostedDevicesScreen.kt`, `SettingsPages.kt`, `SettingsIndex.kt`. Decisión: evitar pagos a Google y priorizar app nativa de Android TV en el futuro.
-- **Chromecast CastV2 propio (HU-ORCH-12):** decisión C1 del propietario (2026-10-17, Opción B) sobre la purga de HU-ORCH-08. Contrato `SDD-chromecast-castv2.md`: sin Play Services ni App ID registrado, receptor `CC1AD845`, solo LAN y a pedido del usuario. Sin código todavía.
+- **Chromecast CastV2 propio (HU-ORCH-12):** decisión C1 del propietario (2026-10-17, Opción B) sobre la purga de HU-ORCH-08. Contrato `SDD-chromecast-castv2.md`: sin Play Services ni App ID registrado, receptor `CC1AD845`, solo LAN y a pedido del usuario. Implementado en `integrate/hu-orch-12`; arquitectura en §8.
 - **Atribución (HU-ORCH-07):** `README.md` con crédito total a SFG545 y colaboradores, propósito de uso personal y privacidad, y descargo de responsabilidad.
+
+## 8. Chromecast CastV2 propio (HU-ORCH-12)
+Rama `integrate/hu-orch-12` (`70175ed..d228910`). Informe QA y cierre de C1 en `AUDIT.md` §5.10. Paquete `dev.sfg.orchard.mobile.cast`; las clases de protocolo no importan `android.*` y se prueban en JVM.
+
+- **Protocolo (JVM puro):**
+  - `CastMessage.kt`: codec proto2 a mano y framing de 4 bytes big-endian, máximo 65536 bytes, varints de 5 bytes, grupos desconocidos hasta 32 niveles.
+  - `CastTrust.kt`: `parsePrivateIpv4` (RFC 1918 y link-local en forma canónica; sin CGNAT, loopback ni públicas) y `PinningTrustManager` sin CA del sistema, con pin SHA-256 por `id` del TXT.
+  - `CastChannel.kt`: `SSLSocket` desde los bytes de IP validados (sin DNS), conexión y handshake con 5 s, hilo lector, escritura serializada, `requestId` creciente con timeout de 10 s; `requestId: 0` va a los listeners.
+  - `CastSession.kt` + `CastJson.kt`: canales connection/heartbeat/receiver, `LAUNCH` de `CC1AD845` solo si no corre, `PING` cada 5 s, 15 s sin tráfico = un reintento, `SET_VOLUME` del dispositivo. Parser JSON propio con 32 niveles.
+  - `CastMediaChannel.kt`: `LOAD`/`PLAY`/`PAUSE`/`SEEK`/`STOP`/`GET_STATUS` con `mediaSessionId`, `MEDIA_STATUS` y `onItemFinished` una vez por `mediaSessionId`.
+- **Android:**
+  - `CastDiscovery.kt`: `NsdManager` `_googlecast._tcp.` y `MulticastLock` perezosos, resoluciones en serie, timeout de 30 s; `CastTxtParser` extrae `id`, `fn`, `md`, `ca` y descarta IPs no privadas.
+  - `CastV2Player.kt`: `SimpleBasePlayer`; la cola vive en el teléfono y el receptor solo carga el ítem actual. Volumen del receptor como `DeviceInfo` remoto 0..20.
+  - `SharedPreferencesCastTrustStore.kt`: pins en `orchard_cast_tofu_pins`, `commit()` síncrono, sin backup.
+  - `playback/ChromecastPlayback.kt`: handoff teléfono ↔ receptor y `teardown` de player, media, sesión, canal y servidor.
+  - `playback/ChromecastStreamServer.kt`: una instancia por sesión, token de 128 bits, solo atiende a `receiverIp`, 404 a todo lo demás.
+  - `playback/CastControls.kt` (`OrchardGraph.cast`): `StateFlow<CastStatus>` y comandos para la UI; el servicio se registra como `CastHost`.
+  - UI: `ChromecastSettingsRow.kt` en Ajustes → Audio → Devices y en la hoja Connect (`FrostedDevicesScreen.kt`), operable con D-Pad.
+- **Flujo de sesión:** Buscar → `CastDiscovery` (máx. 30 s) → elegir dispositivo → `ChromecastPlayback.connectToDevice` → `ChromecastStreamServer(receiverIp)` → `CastChannel.open` (IP privada, pin TOFU) → `CONNECT receiver-0` → `GET_STATUS` → `LAUNCH CC1AD845` si hace falta → `CONNECT transportId` → `LOAD http://<ipv4-lan>:<puerto>/cast/<token>/<mediaId>` → `MEDIA_STATUS` alimenta `CastV2Player`; `FINISHED` → `LOAD` del siguiente. Desconectar o `DISCONNECTED` devuelven la reproducción al teléfono en la posición conocida y cierran todo.
+- **Retirado:** `media3-cast`, `OrchardCastOptionsProvider.kt`, `ChromecastMediaItemConverter.kt`, meta-data `OPTIONS_PROVIDER_CLASS_NAME`, `MediaTransferReceiver`, `cast_app_id` y `mediaRouteTheme` de `styles.xml`. La meta-data `com.google.android.gms.car.application` de Android Auto se queda: es una clave del manifest, no una dependencia.
+- **Pendiente:** tests JVM, `:app:dependencies` y `assembleRelease` en Actions; QA manual en hardware (descubrimiento, grupos multizona, corte de Wi-Fi ≤ 20 s); titular del copyright de los archivos nuevos. Fase 2 (escritorio) solo con orden del PO.

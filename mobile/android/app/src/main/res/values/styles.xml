@@ -15,6 +15,5 @@
     <item name="android:navigationBarColor">@color/orchard_night</item>
     <item name="android:statusBarColor">@color/orchard_night</item>
     <item name="android:windowLightStatusBar">false</item>
-    <item name="mediaRouteTheme">@style/Theme.MediaRouter</item>
   </style>
 </resources>

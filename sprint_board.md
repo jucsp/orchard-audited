@@ -16,7 +16,15 @@
   - [Responsable: Claude PM/QA] Adaptación de UI, navegación con D-Pad focus traversal, manifiesto Leanback y generación de APK en el pipeline de releases.
   - [Responsable: DeepSeek Dev] Integración del reproductor y sincronización continua con Orchard Connect en Android TV.
 
-- [ ] **HU-ORCH-12: Chromecast con CastV2 propio, sin Play Services** (contrato `SDD-chromecast-castv2.md`; C1 aprobado por el propietario, `AUDIT.md` §5.10)
+---
+
+## 🏗️ In Progress
+_(vacío)_
+
+---
+
+## 🧪 In Review / QA
+- [ ] **HU-ORCH-12: Chromecast con CastV2 propio, sin Play Services** (contrato `SDD-chromecast-castv2.md`; C1 cerrado, `AUDIT.md` §5.10) — implementación y QA estático completos; bloqueada para `audited` hasta CI y QA manual
   - [x] [Responsable: Claude PM/QA] Contrato SDD y registro de la decisión en `AUDIT.md`/`UPSTREAM.md`. Pendiente revisión del PO antes de lanzar a DeepSeek.
   - [x] [Responsable: DeepSeek Dev] T1 codec `CastMessage` + framing (`cast/CastMessage.kt`, `CastMessageTest.kt`, vectores en `tests/fixtures/castv2/`).
     - QA Claude: conforme a §4.2, §4.3 y CAST-INV-8/9 (sin `android.*`, cabecera AGPL-3.0-or-later, 281 y 229 líneas). Vectores `CONNECT` y `PING` verificados contra un codificador de referencia independiente.
@@ -60,18 +68,13 @@
     - CAST-INV-3: abrir el selector solo construye `CastDiscovery` (perezoso); `NsdManager` y `MulticastLock` se usan al pulsar Buscar, la búsqueda se detiene al elegir un dispositivo, al salir de la pantalla o a los 30 s. Al arrancar la app no se crea nada de cast.
     - `git grep` de `com.google.android.gms`, `androidx.mediarouter`, `MediaRouteButton` y `CastContext` en `mobile/android`: solo queda la meta-data de Android Auto ya anotada en Q1. `OrchardPlaybackService.kt` queda en 492 líneas.
     - Pendiente: compilar y `testDebugUnitTest` en Actions (sin SDK ni `kotlinc` en local; revisión solo estática). Sin tests de Compose ni de `CastControls` (dependen de Media3/`Looper`); cubrir en Q3 o QA manual con D-Pad real.
-  - [ ] [Responsable: Claude PM/QA] Q3 tests y verificación de `CAST-INV-*` · Q4 auditoría y zonas protegidas.
-  - [ ] [Responsable: Antigravity PO] I1 rama `integrate/hu-orch-12` y commits `audit-fork:` por tarea.
+  - [x] [Responsable: Claude PM/QA] Q3 informe QA en `AUDIT.md` §5.10.1–5.10.3: CAST-INV-1 a 9 ✅ en revisión estática; 95 tests JVM en 9 clases, sin ejecutar.
+    - Corregido en QA: `styles.xml` referenciaba `mediaRouteTheme`/`Theme.MediaRouter`, que solo existían por `media3-cast` (AAPT habría fallado); los `Log.w` de `ChromecastStreamServer` pasaban el `Throwable` completo (CAST-INV-6), ahora solo el tipo.
+    - ❌ Criterio §6 "≤ 20 s tras corte de Wi-Fi" en riesgo por el reintento tras 15 s sin tráfico; medir en QA manual.
+  - [x] [Responsable: Claude PM/QA] Q4 C1 cerrado (Opción B), zonas protegidas del módulo cast activas en `UPSTREAM.md`, commits 14–22 registrados, §8 en `technical_memory.md`.
+  - [x] [Responsable: Antigravity PO] I1 rama `integrate/hu-orch-12` con 9 commits `audit-fork:` (`70175ed..d228910`).
+  - **Bloqueantes para `audited`:** `testDebugUnitTest`, `:app:dependencies --configuration releaseRuntimeClasspath` y `assembleRelease` en verde en Actions; QA manual del propietario (§6); commit de las correcciones de Q3/Q4 (sin commit).
   - Fase 2 (escritorio C++/Qt): fuera del sprint hasta orden del PO.
-
----
-
-## 🏗️ In Progress
-_(vacío)_
-
----
-
-## 🧪 In Review / QA
 - [ ] **HU-ORCH-05: Pipeline de Build, Release Automatizado y Empaquetado RPM** `[Responsable: DeepSeek Dev (backup de Claude PM/QA)]`
   - Hecho: `.github/workflows/release.yml` (Linux AppImage + RPM, prueba de instalación en Fedora, Windows 7z + setup, `SHA256SUMS.txt`, publicación en GitHub Releases del fork), `scripts/package-linux-rpm.sh`, `packaging/rpm/orchard.spec`. Eliminado `manual-desktop-build.yml` (publicaba en R2).
   - Backup de rol: Claude (PM/QA) alcanzó su rate limit (resets 6:20pm); DeepSeek Dev asumió las funciones de PM/QA para implementar y verificar esta HU.
