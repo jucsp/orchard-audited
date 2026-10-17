@@ -29,6 +29,11 @@ _(vacío)_
   - Hecho: tabla de packs vacía (core, compartida con Android por JNI); proveedor por defecto vacío y sin `local` en escritorio; QML y Android sin selector `Local`, sin calidad y sin lista de modelos; test `packTableIsEmpty` (`AUDIT.md` §5.7).
   - QA: `npm test` 76/76; `g++ -fsyntax-only` con Qt real; `TranslationPacks` en ejecución con tabla vacía 3/3; `qmllint` sin errores.
   - Pendiente: commit, suite C++ con meson y build Android/Kotlin.
+- [ ] **HU-ORCH-10: APK de Android en el pipeline de releases** `[Responsable: Claude PM/QA]`
+  - Hecho: job `android` en `release.yml` (`assembleRelease`, NDK fijado por Gradle, artifact `Orchard-Android-arm64-v8a.apk`); `publish` lo exige, lo incluye en `SHA256SUMS.txt` y en las notas (`AUDIT.md` §5.9).
+  - Firma: secretos `ANDROID_KEYSTORE_*` si existen; si no, keystore desechable generada en el runner.
+  - QA: YAML válido, `bash -n` en todos los `run`, generación de keystore probada en local.
+  - Pendiente: commit, primera ejecución en Actions y cargar los secretos `ANDROID_KEYSTORE_*` para que los APK se actualicen sin desinstalar.
 
 ---
 

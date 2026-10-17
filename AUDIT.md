@@ -345,3 +345,28 @@ Acción recomendada cuando el upstream publique un tag estable: repetir esta rev
 - ✅ `git grep -i` sin `helsinki`, `opus-mt`, `elan-mt`, `orchard-lyric-translation` ni `scripts/translation` fuera de la documentación de gobernanza (`AUDIT.md`, `technical_memory.md`, `sprint_board.md`, `UPSTREAM.md`). Coincidencias restantes sin relación: `helsinki` en `models/docs-search/vocab.txt` (vocabulario del modelo de búsqueda), `orchard-lyric-translation/1.0` como valor de `x-goog-api-client` hacia Gemini (`lyrics_translator.cpp:446`, `RemoteLyricTranslation.kt:55`) y el nombre de conexión SQLite local en `translation_store.cpp:32`.
 - ✅ `npm test` en `services/account`: 76/76.
 - Sin código compilado afectado: no aplica build C++ ni Android.
+
+### 5.9 APK de Android en el pipeline de release (HU-ORCH-10, 2026-10-16)
+
+- **Base:** `6f0b649` + cambios sin commit en el árbol de trabajo. Aplicados por Claude (PM/QA) por instrucción directa del propietario.
+- **Alcance:** solo CI (`.github/workflows/release.yml`). Sin cambios en código de la app.
+
+| Elemento | Cambio |
+| --- | --- |
+| Job `android` ("Android arm64-v8a APK", `ubuntu-24.04`) | `checkout` con submódulos, Node 24 + `npm ci --prefix providers/youtube`, JDK 17 temurin con caché de Gradle, Rust stable con `aarch64-linux-android` (vía `rustup`, sin acción de terceros) y `cargo install cargo-ndk --locked`. Instala con `sdkmanager` el NDK que fija `build.gradle` (`28.2.13676358`) y `cmake;3.22.1`, y apunta `ANDROID_NDK_HOME`/`ANDROID_NDK_ROOT` a ese NDK para que cargo-ndk y CMake enlacen contra el mismo. `./gradlew --no-daemon assembleRelease` y artifact `orchard-android` con `Orchard-Android-arm64-v8a.apk` |
+| Firma | Si existen los secretos `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` y `ANDROID_KEY_PASSWORD`, se usa esa keystore. Si falta alguno, `keytool` genera una PKCS12 desechable (alias `orchard`, RSA 4096, 10000 días, contraseña `openssl rand -hex 32` enmascarada) y Actions muestra un warning. La keystore se borra del runner después del build |
+| Job `publish` | `needs: [linux, rpm-check, windows, android]`, descarga `orchard-android` en `dist`, exige `Orchard-Android-arm64-v8a.apk` no vacío antes de escribir `SHA256SUMS.txt` y suma la viñeta de Android a las notas |
+| Acciones | `actions/setup-java` fijada por SHA (`b6effb05…`, tag `v5` = `v5.7.0`, comprobado con `git ls-remote`). El resto reutiliza los SHA del archivo |
+
+**Red y hosts:** el job descarga de npm, crates.io, Maven/Google (Gradle, AGP) y `dl.google.com` (NDK). Ningún host del autor. El APK sale con el `UpdateManager` del fork (`jucsp/orchard-audited`), pero este build no publica `latest-android.json`, así que el updater de Android no encuentra versiones nuevas.
+
+**Verificación:**
+
+- ✅ `yaml.safe_load`: jobs `linux`, `rpm-check`, `windows`, `android`, `publish`; `publish.needs` incluye `android`.
+- ✅ `bash -n` sobre cada `run` de `android` y `publish`.
+- ✅ La expresión `sed` extrae `28.2.13676358` de `build.gradle`.
+- ✅ Rama sin secretos del paso de keystore ejecutada en local: PKCS12 válida con alias `orchard`; contraseñas enmascaradas en la salida.
+- ✅ Jobs `linux`, `rpm-check` y `windows` sin cambios (el diff solo toca la cabecera, el job nuevo y `publish`).
+- No verificado: ejecución real en Actions ni `assembleRelease` (no hay SDK de Android en esta máquina). `actionlint` no está instalado.
+
+**Riesgo pendiente:** con la keystore desechable cada release se firma con una clave distinta, así que Android rechaza instalar el APK nuevo encima del anterior: hay que desinstalar y se pierden los datos locales. Para actualizar sin desinstalar, el propietario debe cargar una vez los cuatro secretos `ANDROID_KEYSTORE_*` en el repositorio.

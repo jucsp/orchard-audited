@@ -56,6 +56,7 @@ Reglas canónicas en `AGENTS.md`; `CLAUDE.md` y `GEMINI.md` lo importan y añade
 - **Deuda heredada (REQ-A6):** `pip install` sin hashes y `linuxdeploy` *continuous* sin verificar el hash en `package-linux-appimage.sh`.
 - **Backup de rol (HU-ORCH-05):** Claude (PM/QA) alcanzó rate limit (resets 6:20pm); DeepSeek Dev asumió las funciones de PM/QA e implementó/verificó el pipeline y el RPM.
 - **Deuda menor:** `docs/DEVELOPMENT.md` y `docs/BOOTSTRAPPER.md` aún enlazan a `.github/workflows/manual-desktop-build.yml` (borrado); actualizar en una HU futura.
+- **APK de Android (HU-ORCH-10):** job `android` (`ubuntu-24.04`) con Node 24, JDK 17, Rust `aarch64-linux-android` y cargo-ndk. Instala el NDK de `orchardNdkVersion` y fija `ANDROID_NDK_HOME` porque el del runner es otro. Publica `Orchard-Android-arm64-v8a.apk`, que `publish` exige. Firma con los secretos `ANDROID_KEYSTORE_*`; sin ellos usa una keystore desechable, y como cambia la firma en cada release el APK no se instala sobre el anterior. No publica `latest-android.json`, así que el `UpdateManager` de Android no ve versiones nuevas.
 
 ## 7. Soberanía de servicios (HU-ORCH-06) y purga de frontend (HU-ORCH-07/08)
 - **Worker propio (`orchard-account`):** desplegado en `connect.kasper-cloud.com` con base D1 `orchard-accounts`, secrets cargados (`GOOGLE_CLIENT_SECRET`, `SIGNING_KEY`, etc.) y Durable Objects `ConnectHub` y `PartyRoom`.

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Builds Linux (AppImage, rpm) and Windows and publishes them only to the
-# GitHub Releases of this fork. Nothing is sent to R2 or the upstream author's hosts.
+# Builds Linux (AppImage, rpm), Windows and the Android APK and publishes them
+# only to the GitHub Releases of this fork. Nothing is sent to R2 or the upstream author's hosts.
 name: Build and release orchard-audited
 
 on:
@@ -328,9 +328,100 @@ jobs:
           path: ${{ env.CCACHE_DIR }}
           key: orchard-windows-msvc-qt6112-v1-${{ github.run_id }}-${{ github.run_attempt }}
 
+  android:
+    name: Android arm64-v8a APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Install provider build dependencies
+        run: npm ci --prefix providers/youtube
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          java-version: '17'
+          distribution: temurin
+          cache: gradle
+      - name: Install Rust Android target and cargo-ndk
+        run: |
+          rustup toolchain install stable --profile minimal --target aarch64-linux-android
+          rustup default stable
+          cargo install cargo-ndk --locked
+      # cargo-ndk reads ANDROID_NDK_HOME, which on the runner points at its default NDK.
+      # Gradle pins another version for CMake, and the two must link against the same one.
+      - name: Install the NDK pinned by Gradle
+        run: |
+          ndk="$(sed -n "s/^def orchardNdkVersion = '\([^']*\)'.*/\1/p" mobile/android/app/build.gradle)"
+          test -n "$ndk"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$ndk" "cmake;3.22.1" > /dev/null
+          test -d "$ANDROID_HOME/ndk/$ndk"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$ndk" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/$ndk" >> "$GITHUB_ENV"
+      # The ANDROID_KEYSTORE_* secrets give every release the same signature, so a new APK
+      # installs over the previous one. Without them a throwaway key is generated, and each
+      # APK has to be uninstalled before the next one is installed.
+      - name: Prepare release keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          keystore="$RUNNER_TEMP/orchard-release.jks"
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ] && [ -n "$ANDROID_KEYSTORE_PASSWORD" ] \
+            && [ -n "$ANDROID_KEY_ALIAS" ] && [ -n "$ANDROID_KEY_PASSWORD" ]; then
+            printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$keystore"
+            store_password="$ANDROID_KEYSTORE_PASSWORD"
+            alias="$ANDROID_KEY_ALIAS"
+            key_password="$ANDROID_KEY_PASSWORD"
+            echo "Signing with the fork keystore from secrets"
+          else
+            store_password="$(openssl rand -hex 32)"
+            alias=orchard
+            key_password="$store_password"
+            keytool -genkeypair -noprompt -keystore "$keystore" -storetype PKCS12 \
+              -alias "$alias" -keyalg RSA -keysize 4096 -validity 10000 \
+              -storepass "$store_password" -keypass "$key_password" \
+              -dname "CN=orchard-audited, O=orchard-audited fork"
+            echo "::warning::ANDROID_KEYSTORE_* secrets are missing; this APK is signed with a throwaway key"
+          fi
+          chmod 600 "$keystore"
+          echo "::add-mask::$store_password"
+          echo "::add-mask::$key_password"
+          {
+            echo "ANDROID_KEYSTORE_FILE=$keystore"
+            echo "ANDROID_KEYSTORE_PASSWORD=$store_password"
+            echo "ANDROID_KEY_ALIAS=$alias"
+            echo "ANDROID_KEY_PASSWORD=$key_password"
+          } >> "$GITHUB_ENV"
+      - name: Build release APK
+        working-directory: mobile/android
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleRelease
+      - name: Collect APK
+        run: |
+          apk=mobile/android/app/build/outputs/apk/release/app-release.apk
+          test -s "$apk"
+          mkdir -p "$RUNNER_TEMP/orchard-android"
+          cp "$apk" "$RUNNER_TEMP/orchard-android/Orchard-Android-arm64-v8a.apk"
+          rm -f "$ANDROID_KEYSTORE_FILE"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: orchard-android
+          path: ${{ runner.temp }}/orchard-android/Orchard-Android-arm64-v8a.apk
+          if-no-files-found: error
+          retention-days: 14
+
   publish:
     name: Publish to GitHub Releases of the fork
-    needs: [linux, rpm-check, windows]
+    needs: [linux, rpm-check, windows, android]
     # Only the canonical fork publishes. Everything else is skipped so forks of
     # this fork never upload artifacts to GitHub Releases.
     if: github.repository == 'jucsp/orchard-audited'
@@ -357,6 +448,10 @@ jobs:
         with:
           name: orchard-windows
           path: dist
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: orchard-android
+          path: dist
       - name: Check artifacts and write SHA256SUMS.txt
         working-directory: dist
         run: |
@@ -364,7 +459,8 @@ jobs:
           rpms=(orchard-*.rpm)
           test ${#rpms[@]} -eq 1
           for file in Orchard-Linux-x86_64.AppImage orchard-bootstrapper \
-            Orchard-Windows-x86_64.7z orchard-bootstrapper.exe OrchardSetup.exe; do
+            Orchard-Windows-x86_64.7z orchard-bootstrapper.exe OrchardSetup.exe \
+            Orchard-Android-arm64-v8a.apk; do
             test -s "$file"
           done
           sha256sum -- * > SHA256SUMS.txt
@@ -394,6 +490,7 @@ jobs:
             echo "- Version: \`$ORCHARD_VERSION\`"
             echo "- Linux: ubuntu-24.04, Qt 6.12.0, $CLANG_VERSION + mold"
             echo "- Windows: windows-2025, Qt 6.11.2 msvc2022_64, NSIS"
+            echo "- Android: arm64-v8a APK para instalación directa y Android Auto"
             echo "- Unsigned: rpm (no GPG signature) and update manifests are not published by this build."
             echo
             echo '```'
