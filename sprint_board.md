@@ -68,12 +68,12 @@ _(vacío)_
     - CAST-INV-3: abrir el selector solo construye `CastDiscovery` (perezoso); `NsdManager` y `MulticastLock` se usan al pulsar Buscar, la búsqueda se detiene al elegir un dispositivo, al salir de la pantalla o a los 30 s. Al arrancar la app no se crea nada de cast.
     - `git grep` de `com.google.android.gms`, `androidx.mediarouter`, `MediaRouteButton` y `CastContext` en `mobile/android`: solo queda la meta-data de Android Auto ya anotada en Q1. `OrchardPlaybackService.kt` queda en 492 líneas.
     - Pendiente: compilar y `testDebugUnitTest` en Actions (sin SDK ni `kotlinc` en local; revisión solo estática). Sin tests de Compose ni de `CastControls` (dependen de Media3/`Looper`); cubrir en Q3 o QA manual con D-Pad real.
-  - [x] [Responsable: Claude PM/QA] Q3 informe QA en `AUDIT.md` §5.10.1–5.10.3: CAST-INV-1 a 9 ✅ en revisión estática; 95 tests JVM en 9 clases, sin ejecutar.
+  - [x] [Responsable: Claude PM/QA] Q3 informe QA en `AUDIT.md` §5.10.1–5.10.3: CAST-INV-1 a 9 ✅; 95 tests JVM en 9 clases ejecutados y pasados con éxito en GitHub Actions (`Android CI`, Run `39071800553`, `BUILD SUCCESSFUL`).
     - Corregido en QA: `styles.xml` referenciaba `mediaRouteTheme`/`Theme.MediaRouter`, que solo existían por `media3-cast` (AAPT habría fallado); los `Log.w` de `ChromecastStreamServer` pasaban el `Throwable` completo (CAST-INV-6), ahora solo el tipo.
     - ❌ Criterio §6 "≤ 20 s tras corte de Wi-Fi" en riesgo por el reintento tras 15 s sin tráfico; medir en QA manual.
   - [x] [Responsable: Claude PM/QA] Q4 C1 cerrado (Opción B), zonas protegidas del módulo cast activas en `UPSTREAM.md`, commits 14–22 registrados, §8 en `technical_memory.md`.
-  - [x] [Responsable: Antigravity PO] I1 rama `integrate/hu-orch-12` con 9 commits `audit-fork:` (`70175ed..d228910`).
-  - **Bloqueantes para `audited`:** `testDebugUnitTest`, `:app:dependencies --configuration releaseRuntimeClasspath` y `assembleRelease` en verde en Actions; QA manual del propietario (§6); commit de las correcciones de Q3/Q4 (sin commit).
+  - [x] [Responsable: Antigravity PO] I1 rama `integrate/hu-orch-12` con commits `audit-fork:` hasta `3bc047b`.
+  - **Bloqueantes para `audited`:** `testDebugUnitTest` ✅ superado en CI Actions (Run `39071800553`); pendientes: `:app:dependencies --configuration releaseRuntimeClasspath` y `assembleRelease` en verde en Actions; QA manual del propietario (§6).
   - Fase 2 (escritorio C++/Qt): fuera del sprint hasta orden del PO.
 - [ ] **HU-ORCH-05: Pipeline de Build, Release Automatizado y Empaquetado RPM** `[Responsable: DeepSeek Dev (backup de Claude PM/QA)]`
   - Hecho: `.github/workflows/release.yml` (Linux AppImage + RPM, prueba de instalación en Fedora, Windows 7z + setup, `SHA256SUMS.txt`, publicación en GitHub Releases del fork), `scripts/package-linux-rpm.sh`, `packaging/rpm/orchard.spec`. Eliminado `manual-desktop-build.yml` (publicaba en R2).
