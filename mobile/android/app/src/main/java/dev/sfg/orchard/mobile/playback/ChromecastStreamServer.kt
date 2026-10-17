@@ -28,6 +28,7 @@ import java.io.BufferedOutputStream
 import java.io.File
 import java.io.RandomAccessFile
 import java.net.Inet4Address
+import java.net.InetSocketAddress
 import java.net.NetworkInterface
 import java.net.ServerSocket
 import java.net.Socket
@@ -35,7 +36,8 @@ import java.net.URI
 import java.net.URLDecoder
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
-import java.util.UUID
+import java.security.SecureRandom
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import okhttp3.OkHttpClient
@@ -53,9 +55,11 @@ class ChromecastStreamServer(
     context: Context,
     private val client: OkHttpClient,
     private val resolver: YouTubeStreamResolver,
+    val receiverIp: String? = null,
 ) : AutoCloseable {
-    private val appContext = context.applicationContext
-    private val token = UUID.randomUUID().toString().replace("-", "")
+    private val appContext: Context by lazy { context.applicationContext }
+    internal val token =
+        ByteArray(16).also { SecureRandom().nextBytes(it) }.joinToString("") { "%02x".format(it) }
     private val running = AtomicBoolean(true)
     private val server = ServerSocket(0)
     private val acceptor = Executors.newSingleThreadExecutor { runnable ->
@@ -64,6 +68,8 @@ class ChromecastStreamServer(
     private val clients = Executors.newCachedThreadPool { runnable ->
         Thread(runnable, "orchard-cast-stream").apply { isDaemon = true }
     }
+    // Blocking socket I/O ignores interrupts, so close() has to close live connections itself.
+    private val connections = ConcurrentHashMap.newKeySet<Socket>()
 
     val port: Int
         get() = server.localPort
@@ -73,7 +79,20 @@ class ChromecastStreamServer(
             while (running.get()) {
                 try {
                     val socket = server.accept()
-                    clients.execute { socket.use(::serve) }
+                    connections += socket
+                    runCatching {
+                            clients.execute {
+                                try {
+                                    socket.use(::serve)
+                                } finally {
+                                    connections -= socket
+                                }
+                            }
+                        }
+                        .onFailure {
+                            connections -= socket
+                            runCatching { socket.close() }
+                        }
                 } catch (error: Exception) {
                     if (running.get()) Log.w(TAG, "Cast stream accept failed", error)
                 }
@@ -96,6 +115,14 @@ class ChromecastStreamServer(
         socket.soTimeout = SOCKET_TIMEOUT_MS
         val input = BufferedInputStream(socket.getInputStream())
         val output = BufferedOutputStream(socket.getOutputStream())
+        val remoteIp = (socket.remoteSocketAddress as? InetSocketAddress)?.address?.hostAddress
+        if (receiverIp != null && remoteIp != receiverIp) {
+            runCatching {
+                writeError(output, 404, "Not Found")
+                output.flush()
+            }
+            return
+        }
         runCatching {
                 val requestLine = readLine(input) ?: return
                 val parts = requestLine.split(' ')
@@ -251,6 +278,8 @@ class ChromecastStreamServer(
         runCatching { server.close() }
         acceptor.shutdownNow()
         clients.shutdownNow()
+        connections.forEach { runCatching { it.close() } }
+        connections.clear()
     }
 
     private fun parseRange(value: String?, length: Long): LongRange? {
