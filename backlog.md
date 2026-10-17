@@ -65,16 +65,23 @@ Fork de auditoría de seguridad sobre `sfg5453/orchard` para mantener un control
   - Traducción por defecto desactivada y exclusivamente vía API Key de Gemini del usuario.
   - Cero llamadas a `account.sfg545.dev/lyrics/translate`.
 
----
-
-## 🔮 Backlog Futuro (Roadmap)
-
-### HU-ORCH-07: Soporte y Compilación para Android TV (D-Pad & Leanback)
-- **ID:** HU-ORCH-07
-- **Prioridad:** Baja (Futura)
+### HU-ORCH-11: Soporte y Compilación para Android TV (D-Pad & Leanback)
+- **ID:** HU-ORCH-11
+- **Prioridad:** Alta
 - **Estimación:** 8 SP
 - **Descripción:** Adaptar la versión móvil de Android para ejecución en Android TV / Google TV. Habilitar `android.software.leanback` en el manifiesto, diseñar el banner para el lanzador de TV y adaptar la navegación mediante control remoto (D-Pad focus traversal). Generar el APK optimizado para TV en el pipeline de GitHub Actions.
 - **Criterios de Aceptación:**
   - APK instalable y visible en el lanzador de Android TV.
   - Navegación fluida y foco visible con D-Pad (flechas del mando a distancia).
   - Reproducción continua en TV sincronizada con Orchard Connect.
+
+### HU-ORCH-12: Re-implementación de Soporte para Chromecast
+- **ID:** HU-ORCH-12
+- **Prioridad:** Alta
+- **Estimación:** 5 SP
+- **Descripción:** Re-implementar e integrar nuevamente la funcionalidad de transmisión hacia dispositivos Chromecast en la aplicación móvil (`CastContext`, `ChromecastPlayback` y controles en `FrostedDevicesScreen.kt` y ajustes), permitiendo descubrir dispositivos en la red local y enviar la reproducción de audio de forma fluida.
+- **Criterios de Aceptación:**
+  - Controles de Chromecast restaurados y funcionales en la interfaz de dispositivos y ajustes.
+  - Descubrimiento y conexión exitosa con receptores Chromecast en la red local.
+  - Sincronización de reproducción, pausa y cola de audio hacia el dispositivo Chromecast.
+

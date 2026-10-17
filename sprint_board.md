@@ -12,6 +12,14 @@
 - [ ] **HU-ORCH-04: Workflow Monitor del Upstream**
   - [Responsable: Claude PM/QA] Crear `.github/workflows/monitor-upstream.yml` fijado por SHA, permisos mínimos y creación de issue con diff.
 
+- [ ] **HU-ORCH-11: Soporte y Compilación para Android TV (D-Pad & Leanback)**
+  - [Responsable: Claude PM/QA] Adaptación de UI, navegación con D-Pad focus traversal, manifiesto Leanback y generación de APK en el pipeline de releases.
+  - [Responsable: DeepSeek Dev] Integración del reproductor y sincronización continua con Orchard Connect en Android TV.
+
+- [ ] **HU-ORCH-12: Re-implementación de Soporte para Chromecast**
+  - [Responsable: DeepSeek Dev] Restaurar e implementar `CastContext`, `ChromecastPlayback` y el manejo de sesión y envío de audio.
+  - [Responsable: Claude PM/QA] Reincorporar los controles de Chromecast en la UI (`FrostedDevicesScreen.kt`, `SettingsPages.kt`, `SettingsIndex.kt`) y validar la transmisión.
+
 ---
 
 ## 🏗️ In Progress
