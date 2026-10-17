@@ -195,7 +195,7 @@ class CastTrustTest {
     }
 }
 
-private class FakeX509Certificate(
+internal class FakeX509Certificate(
     private val encoded: ByteArray,
     serial: Long,
     subject: String

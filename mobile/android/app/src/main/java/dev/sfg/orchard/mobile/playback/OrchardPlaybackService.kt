@@ -38,6 +38,7 @@ import androidx.media3.session.MediaSession
 import dev.sfg.orchard.connect.R
 import dev.sfg.orchard.connect.app.MainActivity
 import dev.sfg.orchard.mobile.OrchardGraph
+import dev.sfg.orchard.mobile.cast.SharedPreferencesCastTrustStore
 import dev.sfg.orchard.mobile.model.Track
 import dev.sfg.orchard.mobile.playback.smart.CrossfadeMode
 import dev.sfg.orchard.mobile.playback.smart.MixSplicer
@@ -81,6 +82,7 @@ class OrchardPlaybackService : MediaLibraryService() {
     private lateinit var slop: dev.sfg.orchard.mobile.playback.slop.SlopPlayback
     // Adaptive mixes and standard fades run at the head of each pipeline; a splicer stays with its player.
     private val splicers = java.util.IdentityHashMap<ExoPlayer, MixSplicer>()
+    private var chromecast: ChromecastPlayback? = null
     /** Queue order as it was when shuffle went on, so turning it off can put the queue back. */
     private var unshuffledOrder: List<String> = emptyList()
 
@@ -187,8 +189,14 @@ class OrchardPlaybackService : MediaLibraryService() {
         crossfade.start(player, spare)
         loadedAudioVariant = graph.streamVariant()
         player.addListener(playbackListener)
-        // Cast stays off: CastContext would make Play Services scan the LAN (INV-6, HU-ORCH-08).
         slop = dev.sfg.orchard.mobile.playback.slop.SlopPlayback(this, graph, ioScope, ::authoritativePlayer, crossfade::abort)
+        // Only registers the host; ChromecastPlayback is built when the user picks a device (CAST-INV-3).
+        graph.cast.attach(CastHost(
+            chromecast = ::castPlayback,
+            onCastStarted = { crossfade.abort(); it.addListener(castPlaybackListener); onSessionPlayerChanged(it) },
+            onCastEnded = { crossfade.start(player, spare); onSessionPlayerChanged(it); refreshAudioVariant() },
+            onCastError = graph::postWarning,
+        ))
         observeAudioVariants(graph, ioScope, ::refreshAudioVariant)
         OrchardWidgetUpdater.onPlayerChanged(this, player)
     }
@@ -265,6 +273,9 @@ class OrchardPlaybackService : MediaLibraryService() {
             persistPlayback(sync = true)
             OrchardWidgetUpdater.onPlayerChanged(this, finalSource, forcePaused = true)
         }
+        OrchardGraph.from(this).cast.detach()
+        chromecast?.close()
+        chromecast = null
         if (::slop.isInitialized) slop.close()
         if (::crossfade.isInitialized) crossfade.release()
         if (::player.isInitialized) player.release()
@@ -297,8 +308,36 @@ class OrchardPlaybackService : MediaLibraryService() {
     }
 
     private fun authoritativePlayer(): Player? = when {
+        chromecast?.isActive == true -> chromecast?.authoritativePlayer()
         ::player.isInitialized -> player
         else -> null
+    }
+
+    private fun castPlayback(): ChromecastPlayback = chromecast ?: ChromecastPlayback(
+        this, OrchardGraph.from(this).http, streamResolver, SharedPreferencesCastTrustStore(this), localPlayer = { player },
+    ).also { chromecast = it }
+
+    private fun onSessionPlayerChanged(target: Player) {
+        mediaSession.player = OrchardSessionPlayer(target)
+        if (::slop.isInitialized) slop.refresh()
+        persistPlayback()
+        updateCustomLayout()
+        OrchardWidgetUpdater.onPlayerChanged(this, target)
+    }
+
+    /** The receiver runs its own buffering, so only the shared state updates follow the cast player. */
+    private val castPlaybackListener = object : Player.Listener {
+        override fun onEvents(player: Player, events: Player.Events) {
+            if (::slop.isInitialized) slop.refresh()
+            if (events.containsAny(*STATE_EVENTS)) {
+                persistPlayback()
+                updateCustomLayout()
+            }
+            OrchardWidgetUpdater.onPlayerChanged(this@OrchardPlaybackService, player)
+            nowPlaying.updateScrobbling(player)
+        }
+
+        override fun onIsPlayingChanged(isPlaying: Boolean) = savePositionWhilePlaying(isPlaying)
     }
 
     /**

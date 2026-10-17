@@ -51,6 +51,7 @@ private val entries = listOf(
     SettingsEntry("Exponential volume", "Finer control at low volumes", SettingsPage.Audio, "quiet media buttons"),
     SettingsEntry("Autoplay", "Keep playing related music", SettingsPage.Audio, "queue radio"),
     SettingsEntry("Crossfade", "Blend the end of a track into the next", SettingsPage.Audio, "adaptive mix smart overlap transition"),
+    SettingsEntry("Chromecast", "Cast to speakers and TVs on this Wi-Fi", SettingsPage.Audio, "cast tv speaker nest google home"),
     SettingsEntry("Home screen layout", "Reorder and hide sections on Home", SettingsPage.Appearance, "sections"),
     SettingsEntry("Player gestures", "Swipe to skip and tap to like", SettingsPage.Appearance),
     SettingsEntry("Use system colours", "Match your wallpaper", SettingsPage.Appearance, "theme material you accent"),

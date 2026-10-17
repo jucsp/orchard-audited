@@ -28,232 +28,308 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.VolumeOff
+import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.Cast
+import androidx.compose.material.icons.rounded.CastConnected
+import androidx.compose.material.icons.rounded.Speaker
+import androidx.compose.material.icons.rounded.SpeakerGroup
+import androidx.compose.material.icons.rounded.Tv
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.mediarouter.app.MediaRouteButton
-import androidx.mediarouter.media.MediaRouter
-import androidx.mediarouter.media.MediaRouterParams
-import com.google.android.gms.cast.framework.CastButtonFactory
-import com.google.android.gms.cast.framework.CastContext
-import com.google.android.gms.cast.framework.CastSession
-import com.google.android.gms.cast.framework.SessionManagerListener
+import dev.sfg.orchard.mobile.OrchardGraph
+import dev.sfg.orchard.mobile.cast.CastDevice
+import dev.sfg.orchard.mobile.cast.CastDiscovery
+import dev.sfg.orchard.mobile.playback.CastControls
+import dev.sfg.orchard.mobile.playback.CastStatus
 import dev.sfg.orchard.mobile.ui.theme.CanopyColors
 import dev.sfg.orchard.mobile.ui.theme.LocalAccent
+import kotlinx.coroutines.delay
 
-/** Observes the active CastSession name so UI dynamically updates when connected. */
-@Composable
-internal fun rememberCurrentCastDeviceName(): String? {
-    val context = LocalContext.current
-    var castDeviceName by remember { mutableStateOf<String?>(null) }
+/**
+ * Local-network discovery owned by one picker. Nothing touches the network until [search], and
+ * leaving the screen stops it (CAST-INV-3).
+ */
+@Stable
+private class CastPicker(private val discovery: CastDiscovery) {
+    var devices by mutableStateOf<List<CastDevice>>(emptyList())
+        private set
+    var searching by mutableStateOf(false)
+        private set
+    var searched by mutableStateOf(false)
+        private set
+    var error by mutableStateOf<String?>(null)
+        private set
 
-    DisposableEffect(context) {
-        val castContext = runCatching { CastContext.getSharedInstance(context) }.getOrNull()
-        val sessionManager = castContext?.sessionManager
-        castDeviceName = sessionManager?.currentCastSession?.castDevice?.friendlyName
-
-        val listener =
-            object : SessionManagerListener<CastSession> {
-                override fun onSessionStarted(session: CastSession, sessionId: String) {
-                    castDeviceName = session.castDevice?.friendlyName
-                }
-
-                override fun onSessionResumed(session: CastSession, wasSuspended: Boolean) {
-                    castDeviceName = session.castDevice?.friendlyName
-                }
-
-                override fun onSessionEnded(session: CastSession, error: Int) {
-                    castDeviceName = null
-                }
-
-                override fun onSessionSuspended(session: CastSession, reason: Int) {}
-
-                override fun onSessionStarting(session: CastSession) {}
-
-                override fun onSessionStartFailed(session: CastSession, error: Int) {
-                    castDeviceName = null
-                }
-
-                override fun onSessionEnding(session: CastSession) {}
-
-                override fun onSessionResuming(session: CastSession, sessionId: String) {}
-
-                override fun onSessionResumeFailed(session: CastSession, error: Int) {
-                    castDeviceName = null
-                }
-            }
-
-        sessionManager?.addSessionManagerListener(listener, CastSession::class.java)
-        onDispose {
-            sessionManager?.removeSessionManagerListener(listener, CastSession::class.java)
+    fun search() {
+        error = null
+        try {
+            discovery.startDiscovery { found -> devices = found }
+            searching = true
+            searched = true
+        } catch (e: RuntimeException) {
+            searching = false
+            error = "Could not search this network for Cast devices"
         }
     }
 
-    return castDeviceName
+    fun stop() {
+        discovery.stopDiscovery()
+        searching = false
+    }
+
+    /** Discovery stops by itself after 30 s or when NsdManager refuses to start. */
+    fun syncSearching() {
+        if (searching && !discovery.isDiscovering) searching = false
+    }
 }
 
-/**
- * Underlying MediaRouteButton wrapped for Jetpack Compose, configured to display the in-app dialog
- * directly.
- */
 @Composable
-internal fun ChromecastMediaRouteButton(
-    modifier: Modifier = Modifier,
-    onButtonReady: ((MediaRouteButton) -> Unit)? = null,
-) {
-    AndroidView(
-        modifier = modifier,
-        factory = { context ->
-            val router = MediaRouter.getInstance(context)
-            val currentParams = router.routerParams
-            val newParams =
-                (if (currentParams != null) MediaRouterParams.Builder(currentParams)
-                    else MediaRouterParams.Builder())
-                    .setOutputSwitcherEnabled(false)
-                    .build()
-            router.routerParams = newParams
-
-            MediaRouteButton(context).apply {
-                CastButtonFactory.setUpMediaRouteButton(context, this)
-                onButtonReady?.invoke(this)
-            }
-        },
-        update = { button -> onButtonReady?.invoke(button) },
-    )
+private fun rememberCastPicker(): CastPicker {
+    val context = LocalContext.current
+    val picker = remember { CastPicker(CastDiscovery(context)) }
+    DisposableEffect(picker) { onDispose { picker.stop() } }
+    LaunchedEffect(picker.searching) {
+        while (picker.searching) {
+            delay(SEARCH_POLL_MS)
+            picker.syncSearching()
+        }
+    }
+    return picker
 }
 
-/** Receiver picker row inside Settings -> Devices, matching the flat modern Settings style. */
+/** Cast picker inside Settings -> Audio -> Devices. */
 @Composable
 internal fun ChromecastSettingsRow(modifier: Modifier = Modifier) {
-    var routeButton by remember { mutableStateOf<MediaRouteButton?>(null) }
-    val castDeviceName = rememberCurrentCastDeviceName()
-    val isConnected = castDeviceName != null
+    CastPanel(modifier)
+}
 
+/** Cast picker on the Connect sheet, next to Orchard Connect devices. */
+@Composable
+internal fun ChromecastConnectRow(modifier: Modifier = Modifier) {
+    CastPanel(modifier)
+}
+
+@Composable
+private fun CastPanel(modifier: Modifier = Modifier) {
+    val controls = OrchardGraph.from(LocalContext.current).cast
+    val status by controls.status.collectAsState()
+    val picker = rememberCastPicker()
+
+    Column(modifier.fillMaxWidth()) {
+        CastHeader(status, picker, controls)
+        when {
+            status.connected -> CastVolumeControls(status, controls)
+            status.connecting -> Unit
+            else -> CastDeviceList(picker, controls)
+        }
+        val message = status.error ?: picker.error
+        if (message != null && !status.connected) {
+            Box(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                FrostedMessageBanner(message, isError = true)
+            }
+        }
+    }
+}
+
+@Composable
+private fun CastHeader(status: CastStatus, picker: CastPicker, controls: CastControls) {
+    val accent = LocalAccent.current
+    val name = status.device?.name
+    val subtitle = when {
+        status.connecting -> "Connecting to $name…"
+        status.connected -> "Connected to $name"
+        picker.searching -> "Searching this Wi-Fi network…"
+        else -> "Play on speakers and displays on this Wi-Fi"
+    }
     Row(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .clickable {
-                    if (routeButton?.showDialog() != true) {
-                        routeButton?.performClick()
-                    }
-                }
-                .defaultMinSize(minHeight = 64.dp)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+        Modifier.fillMaxWidth()
+            .defaultMinSize(minHeight = 64.dp)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(Modifier.weight(1f).padding(end = 16.dp)) {
+        CastBadge(if (status.connected) Icons.Rounded.CastConnected else Icons.Rounded.Cast, status.connected)
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
             Text(
                 "Chromecast",
-                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Normal),
+                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
                 color = CanopyColors.Text,
             )
             Text(
-                if (isConnected) "Connected to $castDeviceName"
-                else "Play on speakers and displays",
-                color = if (isConnected) LocalAccent.current else CanopyColors.Muted,
+                subtitle,
                 style = MaterialTheme.typography.bodyMedium,
+                color = if (status.connected || status.connecting) accent else CanopyColors.Muted,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
         }
-        ChromecastMediaRouteButton(
-            modifier = Modifier.size(40.dp),
-            onButtonReady = { routeButton = it },
+        Spacer(Modifier.width(8.dp))
+        when {
+            status.connecting -> Unit
+            status.connected -> TextButton(onClick = controls::disconnect) { Text("Disconnect", color = accent) }
+            picker.searching -> TextButton(onClick = picker::stop) { Text("Stop", color = accent) }
+            else -> TextButton(onClick = { controls.clearError(); picker.search() }) {
+                Text(if (picker.searched) "Search again" else "Search", color = accent)
+            }
+        }
+    }
+}
+
+@Composable
+private fun CastBadge(icon: ImageVector, active: Boolean) {
+    Box(
+        Modifier.size(40.dp)
+            .clip(CircleShape)
+            .background(CanopyColors.Canvas)
+            .border(1.dp, CanopyColors.Rule, CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = if (active) LocalAccent.current else CanopyColors.MutedStrong,
+            modifier = Modifier.size(20.dp),
         )
     }
 }
 
-/** Receiver picker row inside Connect / Devices Screen matching FrostedDeviceRow style. */
 @Composable
-internal fun ChromecastConnectRow(modifier: Modifier = Modifier) {
-    var routeButton by remember { mutableStateOf<MediaRouteButton?>(null) }
-    val castDeviceName = rememberCurrentCastDeviceName()
-    val isConnected = castDeviceName != null
-    val shape = RoundedCornerShape(16.dp)
-
-    Surface(
-        onClick = {
-            if (routeButton?.showDialog() != true) {
-                routeButton?.performClick()
-            }
-        },
-        shape = shape,
-        color = Color.Transparent,
-        modifier = modifier.fillMaxWidth(),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier =
-                    Modifier.size(40.dp)
-                        .clip(CircleShape)
-                        .background(CanopyColors.Canvas)
-                        .border(1.dp, CanopyColors.Rule, CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Cast,
-                    contentDescription = null,
-                    tint = if (isConnected) LocalAccent.current else CanopyColors.MutedStrong,
-                    modifier = Modifier.size(20.dp),
+private fun CastDeviceList(picker: CastPicker, controls: CastControls) {
+    val devices = picker.devices
+    if (devices.isEmpty()) {
+        if (picker.searched && !picker.searching && picker.error == null) {
+            Box(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                FrostedMessageBanner(
+                    "No Cast devices found. The phone and the device must share a Wi-Fi network " +
+                        "that allows device discovery, without a VPN in between.",
                 )
             }
-
-            Spacer(Modifier.width(12.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Chromecast",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                    color = CanopyColors.Text,
-                )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier =
-                            Modifier.size(7.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    if (isConnected) CanopyColors.Accent else CanopyColors.Muted
-                                )
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        text =
-                            if (isConnected) "Connected to $castDeviceName"
-                            else "Cast to speakers and displays",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = CanopyColors.Muted,
-                    )
-                }
+        }
+        return
+    }
+    Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
+        devices.forEach { device ->
+            CastDeviceRow(device) {
+                picker.stop()
+                controls.connect(device)
             }
-
-            ChromecastMediaRouteButton(
-                modifier = Modifier.size(40.dp),
-                onButtonReady = { routeButton = it },
-            )
         }
     }
 }
+
+@Composable
+private fun CastDeviceRow(device: CastDevice, onClick: () -> Unit) {
+    // clickable keeps the row in the D-Pad focus order and draws the focus highlight.
+    Row(
+        Modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(role = Role.Button, onClickLabel = "Cast to ${device.name}", onClick = onClick)
+            .defaultMinSize(minHeight = 56.dp)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            deviceIcon(device),
+            contentDescription = null,
+            tint = CanopyColors.MutedStrong,
+            modifier = Modifier.size(22.dp),
+        )
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                device.name,
+                style = MaterialTheme.typography.bodyLarge,
+                color = CanopyColors.Text,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            device.model?.takeIf { it.isNotBlank() }?.let { model ->
+                Text(
+                    model,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = CanopyColors.Muted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+/** Groups announce a fixed model name; `ca` bit 0 is video output. Speakers have neither. */
+private fun deviceIcon(device: CastDevice): ImageVector = when {
+    device.model?.contains("group", ignoreCase = true) == true -> Icons.Rounded.SpeakerGroup
+    device.capabilities and CAPABILITY_VIDEO_OUT != 0 -> Icons.Rounded.Tv
+    else -> Icons.Rounded.Speaker
+}
+
+@Composable
+private fun CastVolumeControls(status: CastStatus, controls: CastControls) {
+    var draft by remember { mutableFloatStateOf(status.volume) }
+    // Follows changes made on the device itself or from the notification.
+    LaunchedEffect(status.volume) { draft = status.volume }
+    // One SET_VOLUME per pause in the gesture, not one per pixel or key repeat.
+    LaunchedEffect(draft) {
+        if (draft == status.volume) return@LaunchedEffect
+        delay(VOLUME_DEBOUNCE_MS)
+        controls.setDeviceVolume(draft)
+    }
+    Row(
+        Modifier.fillMaxWidth().padding(start = 12.dp, end = 20.dp, bottom = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = { controls.setDeviceMuted(!status.muted) }) {
+            Icon(
+                if (status.muted) Icons.AutoMirrored.Rounded.VolumeOff else Icons.AutoMirrored.Rounded.VolumeUp,
+                contentDescription = if (status.muted) "Unmute device" else "Mute device",
+                tint = if (status.muted) CanopyColors.Muted else LocalAccent.current,
+            )
+        }
+        Slider(
+            value = draft,
+            onValueChange = { draft = it },
+            valueRange = 0f..1f,
+            // 5 % per D-Pad press, matching the 0..20 scale of the Media3 notification.
+            steps = VOLUME_STEPS - 1,
+            colors = settingsSliderColors(),
+            modifier = Modifier.weight(1f),
+        )
+    }
+    Spacer(Modifier.height(4.dp))
+}
+
+private const val SEARCH_POLL_MS = 500L
+private const val VOLUME_DEBOUNCE_MS = 150L
+private const val VOLUME_STEPS = 20
+private const val CAPABILITY_VIDEO_OUT = 1

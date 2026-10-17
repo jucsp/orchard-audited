@@ -130,6 +130,9 @@ class OrchardGraph(context: Context) {
     @Volatile
     var onClearStreamCache: (() -> Unit)? = null
 
+    /** Cast receiver controls; the playback service attaches itself while it runs. */
+    val cast = dev.sfg.orchard.mobile.playback.CastControls()
+
 
 
     val transitionMarker = kotlinx.coroutines.flow.MutableStateFlow<dev.sfg.orchard.mobile.model.TransitionMarker?>(null)
