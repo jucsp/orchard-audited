@@ -50,9 +50,6 @@ class MainActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
         dev.sfg.orchard.mobile.discord.DiscordNative.attach(this)
         enableEdgeToEdge()
-        runCatching {
-            com.google.android.gms.cast.framework.CastContext.getSharedInstance(this)
-        }
         handleIntent(intent)
         requestNotificationPermission()
         setContent {

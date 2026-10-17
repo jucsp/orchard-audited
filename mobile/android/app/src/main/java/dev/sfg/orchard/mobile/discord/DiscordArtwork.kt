@@ -19,9 +19,11 @@
 
 package dev.sfg.orchard.mobile.discord
 
+import dev.sfg.orchard.connect.BuildConfig
 import java.net.URI
 
-const val DISCORD_APPLICATION_ID = 1531666622312353803L
+/** 0 when the build sets no `orchardDiscordAppId`; presence then stays off. */
+val DISCORD_APPLICATION_ID: Long = BuildConfig.DISCORD_APPLICATION_ID
 const val DISCORD_ORCHARD_PROJECT_URL = "https://github.com/jucsp/orchard-audited"
 const val DISCORD_LISTENING = 2
 

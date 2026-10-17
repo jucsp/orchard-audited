@@ -35,7 +35,7 @@ using namespace std::chrono_literals;
 struct OrchardDiscordRpcHandle {
     OrchardDiscordRpcCallback callback = nullptr;
     void *context = nullptr;
-    uint64_t applicationId = 1531666622312353803ULL;
+    uint64_t applicationId = 0;
     std::mutex mutex;
     std::condition_variable wake;
     std::thread worker;
@@ -125,10 +125,11 @@ extern "C" OrchardDiscordRpcHandle *orchard_discord_rpc_create(
     auto handle = std::make_unique<OrchardDiscordRpcHandle>();
     handle->callback = callback;
     handle->context = context;
-    if (application_id && *application_id) {
-        try { handle->applicationId = std::stoull(application_id); }
-        catch (...) { handle->lastError = "Invalid Discord application ID"; return nullptr; }
-    }
+    // No built-in application: without an ID there is nothing to connect to.
+    if (!application_id || !*application_id) return nullptr;
+    try { handle->applicationId = std::stoull(application_id); }
+    catch (...) { return nullptr; }
+    if (handle->applicationId == 0) return nullptr;
     try { handle->worker = std::thread(runWorker, handle.get()); }
     catch (...) { return nullptr; }
     return handle.release();

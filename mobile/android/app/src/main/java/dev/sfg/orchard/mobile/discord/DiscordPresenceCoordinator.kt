@@ -78,7 +78,7 @@ class DiscordPresenceCoordinator(
             return
         }
         if (started) return
-        if (!discordInstalled()) {
+        if (DISCORD_APPLICATION_ID == 0L || !discordInstalled()) {
             DiscordNative.report(DiscordPresenceStatus.Unavailable)
             return
         }

@@ -73,8 +73,6 @@ class OrchardPlaybackService : MediaLibraryService() {
     private lateinit var streams: PlayerStreams
     private lateinit var recovery: PlaybackRecovery
     private lateinit var nowPlaying: NowPlayingPublisher
-    private lateinit var chromecastStreamServer: ChromecastStreamServer
-    private lateinit var chromecastPlayback: ChromecastPlayback
     // One filter per player, inserted in each one's audio pipeline. They follow the players
     // through a handoff, so a filter never ends up automating the wrong track.
     private lateinit var playerFilter: TransitionFilter
@@ -189,33 +187,7 @@ class OrchardPlaybackService : MediaLibraryService() {
         crossfade.start(player, spare)
         loadedAudioVariant = graph.streamVariant()
         player.addListener(playbackListener)
-        chromecastStreamServer = ChromecastStreamServer(this, graph.http, streamResolver)
-        chromecastPlayback = ChromecastPlayback(
-            context = this,
-            converter = ChromecastMediaItemConverter(chromecastStreamServer),
-            localPlayer = { player },
-            onCastStarted = { castPlayer ->
-                crossfade.abort()
-                castPlayer.addListener(castPlaybackListener)
-                mediaSession.player = OrchardSessionPlayer(castPlayer)
-                if (::slop.isInitialized) slop.refresh()
-                persistPlayback()
-                updateCustomLayout()
-                OrchardWidgetUpdater.onPlayerChanged(this, castPlayer)
-            },
-            onCastEnded = { localPlayer ->
-                chromecastPlayback.player.removeListener(castPlaybackListener)
-                mediaSession.player = OrchardSessionPlayer(localPlayer)
-                if (::slop.isInitialized) slop.refresh()
-                crossfade.start(player, spare)
-                refreshAudioVariant()
-                persistPlayback()
-                updateCustomLayout()
-                OrchardWidgetUpdater.onPlayerChanged(this, localPlayer)
-            },
-            onError = graph::postWarning,
-        )
-        chromecastPlayback.start()
+        // Cast stays off: CastContext would make Play Services scan the LAN (INV-6, HU-ORCH-08).
         slop = dev.sfg.orchard.mobile.playback.slop.SlopPlayback(this, graph, ioScope, ::authoritativePlayer, crossfade::abort)
         observeAudioVariants(graph, ioScope, ::refreshAudioVariant)
         OrchardWidgetUpdater.onPlayerChanged(this, player)
@@ -295,8 +267,6 @@ class OrchardPlaybackService : MediaLibraryService() {
         }
         if (::slop.isInitialized) slop.close()
         if (::crossfade.isInitialized) crossfade.release()
-        if (::chromecastPlayback.isInitialized) chromecastPlayback.close()
-        if (::chromecastStreamServer.isInitialized) chromecastStreamServer.close()
         if (::player.isInitialized) player.release()
         ioScope.cancel()
         if (::spare.isInitialized) spare.release()
@@ -327,7 +297,6 @@ class OrchardPlaybackService : MediaLibraryService() {
     }
 
     private fun authoritativePlayer(): Player? = when {
-        ::chromecastPlayback.isInitialized && chromecastPlayback.isActive -> chromecastPlayback.player
         ::player.isInitialized -> player
         else -> null
     }
@@ -363,21 +332,6 @@ class OrchardPlaybackService : MediaLibraryService() {
             item.mediaId to MediaItemMapper.toTrack(item)
         }
         if (::slop.isInitialized) slop.refresh()
-    }
-
-    /** Cast does not use Orchard's local resolver/crossfade recovery, only shared state updates. */
-    private val castPlaybackListener = object : Player.Listener {
-        override fun onEvents(player: Player, events: Player.Events) {
-            if (::slop.isInitialized) slop.refresh()
-            if (events.containsAny(*STATE_EVENTS)) {
-                persistPlayback()
-                updateCustomLayout()
-            }
-            OrchardWidgetUpdater.onPlayerChanged(this@OrchardPlaybackService, player)
-            nowPlaying.updateScrobbling(player)
-        }
-
-        override fun onIsPlayingChanged(isPlaying: Boolean) = savePositionWhilePlaying(isPlaying)
     }
 
     private val playbackListener = object : Player.Listener {

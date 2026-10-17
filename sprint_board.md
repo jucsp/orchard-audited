@@ -44,3 +44,9 @@ _(vacío)_
 - [x] **HU-ORCH-08: Purga de Frontend Last.fm y Chromecast** `[Responsable: DeepSeek Dev]`
   - Last.fm purgado de la UI de escritorio (`IntegrationsSection.ui.qml`) y móvil (`SettingsConnections.kt`, `SettingsIndex.kt`).
   - Controles de Chromecast purgados de la UI móvil (`FrostedDevicesScreen.kt`, `SettingsPages.kt`, `SettingsIndex.kt`) tras decisión de evitar pagos a Google y priorizar app nativa de Android TV para el futuro.
+- [x] **Remediación de red H12–H15 (contra-auditoría `AUDIT.md` §5.6)** `[Responsable: Claude PM/QA]`
+  - H12: retirados los 15 packs de traducción del HuggingFace del autor; quedan 12 de Helsinki-NLP.
+  - H13: sonda de conectividad solo hacia `connect.kasper-cloud.com/.well-known/jwks.json`.
+  - H14: sin Discord App ID del autor; ID propio por `ORCHARD_DISCORD_APP_ID` (escritorio) u `orchardDiscordAppId` (Gradle).
+  - H15: sin inicialización de `CastContext`/`ChromecastPlayback` en Android.
+  - Tests: 76/76 en `services/account`. Pendiente: suite C++ con meson, build Android y retirar la dependencia `media3-cast`.

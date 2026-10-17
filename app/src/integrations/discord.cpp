@@ -31,7 +31,8 @@
 #include <cmath>
 
 namespace {
-constexpr auto kApplicationId = "1531666622312353803";
+// The fork ships no Discord application; set ORCHARD_DISCORD_APP_ID to an app you own.
+constexpr auto kApplicationIdEnv = "ORCHARD_DISCORD_APP_ID";
 
 QString artworkUrl(const QVariantMap &track)
 {
@@ -118,8 +119,9 @@ Discord::Discord(OrchardAccount *account, YouTubeCatalog *catalog, AuthManager *
     m_showSyncedLyrics = settings.value(QStringLiteral("showSyncedLyrics"), false).toBool();
     settings.endGroup();
 
-    const QByteArray applicationId(kApplicationId);
-    m_handle = orchard_discord_rpc_create(applicationId.constData(), &Discord::receiveEvent, this);
+    const QByteArray applicationId = qgetenv(kApplicationIdEnv).trimmed();
+    if (!applicationId.isEmpty())
+        m_handle = orchard_discord_rpc_create(applicationId.constData(), &Discord::receiveEvent, this);
 
     connectArtistCatalog();
 }

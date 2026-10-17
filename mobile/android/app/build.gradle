@@ -85,6 +85,8 @@ android {
         // build has its own applicationId, so the published APK is neither an
         // upgrade nor installable over it.
         buildConfigField 'boolean', 'UPDATER_ENABLED', 'true'
+        // Discord presence needs an application owned by whoever builds; 0 keeps it off.
+        buildConfigField 'long', 'DISCORD_APPLICATION_ID', "${(findProperty('orchardDiscordAppId') ?: '0')}L"
         testInstrumentationRunner = 'androidx.test.runner.AndroidJUnitRunner'
     }
 

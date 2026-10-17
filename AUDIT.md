@@ -214,3 +214,90 @@ Otros terceros (no autor): `oauth2.googleapis.com` (Google OAuth), `itunes.apple
 3. **Revisión de UI parcial** (§4.2): los cambios grandes de QML/Kotlin se revisaron por muestreo; conviene una pasada completa sobre el tag estable.
 
 Acción recomendada cuando el upstream publique un tag estable: repetir esta revisión sobre el tag, reaplicar los commits `audit-fork:` (UPSTREAM.md), ejecutar HU-ORCH-02/03 y proceder con HU-ORCH-05. **La relicencia a PolyForm Shield desbloquea la publicación de binarios con el motor adaptativo** (L1 resuelto), siempre conservando el `Required Notice` y sin posicionar el fork como producto competidor.
+
+## 5. Contra-auditoría de red del árbol `audited` (2026-10-16)
+
+- **Commit revisado:** `304e63e` (rama `audited`, árbol limpio).
+- **Método:** inventario de todos los hosts `http(s)/ws(s)/stun/turn` en el código no-test (`git grep`, excluye `*.md`, `vendor/`, `third_party/`, tests), lectura de cada coincidencia relevante y búsqueda de SDK de telemetría y dependencias Gradle.
+- **No verificado:** tráfico real en ejecución (sin captura de red), contenido de binarios precompilados (`discord_partner_sdk.aar`, Google Play Services Cast), defaults de opt-in de cada integración en desktop (solo se revisaron puntualmente).
+
+### 5.1 Infraestructura del autor
+
+| Ref | Ubicación | Estado |
+| --- | --- | --- |
+| `*.sfg545.dev` | Solo en comentarios (`discord_artwork.cpp:83`, `lastfm.cpp:39`) y un test Android | ✅ Sin llamadas activas |
+| `huggingface.co/SFG545/orchard-lyric-translation` | `core/native/translation/translation_pack_table.cpp:25`, 15 packs (`jpn-eng` y todos los `*-high`) | ✅ Retirados (H12, §5.6) |
+| Discord application ID `1531666622312353803` | `app/src/integrations/discord.cpp:34`, `discord_sdk_bridge.cpp:38`, `DiscordArtwork.kt:24` | ✅ Eliminado; ID propio por `ORCHARD_DISCORD_APP_ID` / `orchardDiscordAppId` (H14, §5.6) |
+| `github.com/SFG5453/...` | User-Agent ListenBrainz (`ListenBrainzRepository.kt:228`), `Cargo.toml`, comentario de workflow | Info: sin tráfico al autor |
+
+### 5.2 Integraciones de terceros confirmadas
+
+| Grupo | Hosts | Código |
+| --- | --- | --- |
+| Proveedores | `music.youtube.com`, `www.youtube.com`, `i.ytimg.com`, `accounts.google.com`, `oauth2.googleapis.com`; `www.qobuz.com`, `play.qobuz.com` | `providers/youtube`, `providers/qobuz` |
+| Metadata/imagen | `www.theaudiodb.com`, `itunes.apple.com`, `artwork.m8tec.top`, `artwork.boidu.dev` | `album_controller.cpp`, `animated_artwork_service.cpp`, `ArtworkRepository.kt` |
+| Letras | `lrclib.net`, `lyrics-api.boidu.dev`, `lyrics-api.binimum.org`, `lyricsplus.binimum.org`, `lyricsplus.prjktla.workers.dev`, `lyricsplus-seven.vercel.app`, `lyrics-plus-backend.vercel.app` | `lyricsResolver.js`, `betterLyricsProvider.js`, `LyricsRepository.kt` |
+| Reproducción | `sponsor.ajay.app` | `providers/youtube/src/integrations/sponsorblock.js:28` |
+| Social | Discord IPC/Social SDK; `spclient.wg.spotify.com`, `api-partner.spotify.com`, `clienttoken.spotify.com`, `api.spotify.com`, `accounts.spotify.com`; `api.listenbrainz.org` | `spotify_canvas_api.cpp`, `SpotifyCanvasRepository.kt`, `ListenBrainzRepository.kt` |
+| STUN/TURN | `stun:stun.cloudflare.com:3478`, `rtc.live.cloudflare.com` (credenciales TURN, lado Worker) | `services/account/src/connect.js:36,124`, `party.js:31` |
+| Enlaces | `song.link`, `album.link` (solo construcción de URL compartible) | `MediaMenu.qml`, `SongLinksRepository.kt` |
+| Cuenta/Connect | `connect.kasper-cloud.com` (Worker propio, HU-ORCH-06) | `orchard_account.cpp:43`, `OrchardAccountService.kt`, `ListeningPartyClient.kt` |
+
+**No incluidas en el barrido de DeepSeek:**
+
+| Host | Código | Disparo |
+| --- | --- | --- |
+| `www.gstatic.com/generate_204`, `www.youtube.com/generate_204` | `app/src/offline/connectivity_monitor.cpp:33` | ✅ Sustituido por `connect.kasper-cloud.com/.well-known/jwks.json` (H13, §5.6) |
+| Google Cast (Play Services) | `MainActivity.kt:54`, `OrchardPlaybackService.kt:193`, `OrchardCastOptionsProvider.kt`, manifest | ✅ Sin inicialización de `CastContext` ni `ChromecastPlayback` (H15, §5.6) |
+| `api.openai.com`, `api.anthropic.com`, `generativelanguage.googleapis.com` | `lyrics_translator.cpp:47-49`, `RemoteLyricTranslation.kt:90-92` | Opt-in, con clave del usuario |
+| `huggingface.co/Helsinki-NLP` | `translation_pack_table.cpp:23` | Bajo demanda, commit fijado + SHA-256 |
+| `api.github.com/repos/jucsp/orchard-audited` | `UpdateManager.kt:53` | Releases del fork |
+| `ws.audioscrobbler.com` | `services/lastfm` (Worker, no cliente) | Cliente desactivado (`lastfm.cpp` URL vacía) |
+| `jitpack.io`, `codeload.github.com` | `settings.gradle:19`, `scripts/build-qt-webview.py` | Solo en build |
+
+### 5.3 Telemetría
+
+- ✅ Sin SDK de telemetría/crash reporting en desktop, Android ni providers (Sentry, Firebase, Crashlytics, Bugsnag, AppCenter, Mixpanel, Amplitude, PostHog, Datadog, OpenTelemetry, Google Analytics): 0 coincidencias en el código y en `build.gradle`.
+- ⚠️ Binarios cerrados con canal propio posible: Google Play Services Cast (`media3-cast`) y `discord_partner_sdk.aar`. No auditables estáticamente.
+- Worker `services/account`: `[observability]` de Cloudflare es del backend propio, no del cliente.
+
+### 5.4 Hallazgos nuevos
+
+| ID | Severidad | Hallazgo | Estado | Acción propuesta |
+| --- | --- | --- | --- | --- |
+| H12 | Media | 15 packs de traducción offline se descargan del repo HuggingFace del autor (`SFG545/orchard-lyric-translation`). Integridad cubierta por commit fijado + SHA-256, pero viola "sin hosts del autor en rutas de descarga" e INV-3; el autor ve IP y momento de descarga | Resuelto (§5.6) | DeepSeek: re-alojar los packs en un repo HF propio (mismos hashes) o desactivar esos 15 packs |
+| H13 | Baja | Sonda de conectividad a Google/YouTube al arrancar y cada 15 s sin interacción del usuario (INV-6) | Resuelto (§5.6) | Probar contra el propio Worker (`connect.kasper-cloud.com`) o solo bajo demanda tras un fallo |
+| H14 | Baja | Discord Rich Presence usa la aplicación de Discord del autor; el autor controla nombre/assets y Discord le atribuye la actividad | Resuelto (§5.6) | Registrar una aplicación propia y sustituir el ID en los 3 puntos |
+| H15 | Baja | Cast sigue activo en Android: `CastContext` y `ChromecastPlayback` se inicializan al arrancar, con descubrimiento de dispositivos en la LAN vía Play Services, aunque HU-ORCH-08 retiró la UI | Resuelto (§5.6) | Quitar la inicialización o la dependencia `media3-cast` (completar HU-ORCH-08) |
+
+### 5.5 Conclusión QA
+
+- ✅ Ninguna llamada activa a `*.sfg545.dev`; cuenta, Connect y party apuntan al Worker propio; Last.fm desactivado; updater Android hacia releases del fork.
+- ✅ La lista de terceros de DeepSeek es correcta en lo que cubre.
+- ❌ Incompleta: faltan la descarga desde HuggingFace del autor (H12), la sonda periódica a Google (H13), Cast activo en Android (H15) y la traducción con LLM (opt-in).
+- ✅ Sin telemetría por SDK en el código abierto; ⚠️ quedan dos binarios cerrados sin auditar.
+- **Veredicto (revisión inicial):** privacidad aceptable para uso personal; no cumplía INV-3/INV-6 en sentido estricto hasta cerrar H12 y H13. Las correcciones están en §5.6.
+
+### 5.6 Remediación H12 a H15 (2026-10-16)
+
+- **Base:** `304e63e` + cambios sin commit en el árbol de trabajo. Aplicados por Claude (PM/QA) por instrucción directa del propietario.
+
+| ID | Archivo | Cambio |
+| --- | --- | --- |
+| H12 | `core/native/translation/translation_pack_table.cpp` | Retirados los 15 packs `ORCHARD_HOSTED` y la macro. Quedan 12 packs `standard` de `Helsinki-NLP`. Con calidad `high`, `resolve()` usa el pack `standard`; japonés queda sin traducción offline |
+| H13 | `app/src/offline/connectivity_monitor.cpp` | `kProbeUrls` con una sola URL: `https://connect.kasper-cloud.com/.well-known/jwks.json` (endpoint público del Worker propio) |
+| H14 | `discord.cpp`, `discord_sdk_bridge.cpp`, `DiscordArtwork.kt`, `DiscordPresenceCoordinator.kt`, `mobile/android/app/build.gradle` | Sin ID por defecto. Escritorio: `ORCHARD_DISCORD_APP_ID`; sin la variable no se crea el handle RPC. Android: propiedad Gradle `orchardDiscordAppId` → `BuildConfig.DISCORD_APPLICATION_ID`; con `0` la presencia queda `Unavailable` |
+| H15 | `MainActivity.kt`, `OrchardPlaybackService.kt` | Quitados `CastContext.getSharedInstance`, `ChromecastStreamServer`, `ChromecastPlayback` y su listener |
+
+**Verificación:**
+
+- ✅ `git grep` sin `SFG545/orchard-lyric-translation`, `generate_204` ni `1531666622312353803` en código no-doc.
+- ✅ `npm test` en `services/account`: 76/76.
+- ✅ `g++ -fsyntax-only` de `translation_pack_table.cpp`, `connectivity_monitor.cpp` y `discord.cpp`.
+- ❌ Sin verificar: suite C++ (`meson` no instalado), build Android (sin Gradle/SDK), `discord_sdk_bridge.cpp` (necesita `discordpp`). `tests/lyrics_translation_test.cpp::qualityPicksPack` debería seguir pasando por el fallback a `standard`, pero no se ejecutó.
+
+**Residual:**
+
+- Dependencia `media3-cast`, `OrchardCastOptionsProvider`, meta-data del manifest y `MediaTransferReceiver` siguen en el APK sin inicializarse. Quitarlos completa HU-ORCH-08 y requiere build Android.
+- `scripts/translation/emit_packs.py` sigue apuntando al repo del autor (solo herramienta de desarrollo, no se ejecuta en runtime).
+- La sonda de conectividad expone IP y frecuencia al Worker propio cada 15 s. Si cae `connect.kasper-cloud.com`, la app se muestra offline aunque haya red.

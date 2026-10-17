@@ -28,10 +28,10 @@
 
 namespace {
 
-// Any HTTP status proves the path works; the endpoints return 204 and no body, the shortest conversation online.
+// Any HTTP status proves the path works. Only the fork's own Worker is probed, so the
+// periodic check sends nothing to third parties (INV-6).
 const QStringList kProbeUrls = {
-    QStringLiteral("https://www.gstatic.com/generate_204"),
-    QStringLiteral("https://www.youtube.com/generate_204"),
+    QStringLiteral("https://connect.kasper-cloud.com/.well-known/jwks.json"),
 };
 
 constexpr int kProbeTimeoutMs = 5000;
