@@ -5,9 +5,9 @@
 ---
 
 ## 📋 To Do
-- [ ] **HU-ORCH-03: Actualizador con Confirmación Explícita**
-  - [Responsable: DeepSeek Dev] Implementación de máquina de estados del updater (comprobación -> diálogo descarga -> verificación firma/sha256 -> diálogo instalación).
-  - [Responsable: Claude PM/QA] Tests negativos de descarga no autorizada y firma corrupta.
+- [ ] **HU-ORCH-03: Actualizador con Confirmación del Usuario**
+  - [Responsable: DeepSeek Dev] Comprobación de nueva versión en el repositorio del fork y consulta única al usuario de si desea actualizar o no, sin validación de hash en la aplicación.
+  - [Responsable: Claude PM/QA] Verificación de que no ocurran descargas ni actualizaciones sin la confirmación del usuario.
 
 - [ ] **HU-ORCH-04: Workflow Monitor del Upstream**
   - [Responsable: Claude PM/QA] Crear `.github/workflows/monitor-upstream.yml` fijado por SHA, permisos mínimos y creación de issue con diff.

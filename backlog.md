@@ -27,15 +27,14 @@ Fork de auditoría de seguridad sobre `sfg5453/orchard` para mantener un control
   - La clave privada nunca entra al repositorio (INV-5).
   - Verificación de envelope `orchard-signed-v1` con la clave del fork.
 
-### HU-ORCH-03: Actualizador con Confirmación Explícita (2 Pasos)
+### HU-ORCH-03: Actualizador con Confirmación del Usuario
 - **ID:** HU-ORCH-03
 - **Prioridad:** Alta
-- **Estimación:** 5 SP
-- **Descripción:** Reemplazar el flujo de actualización automática por un flujo de dos pasos con diálogo: Comprobación solo de metadatos al abrir (REQ-U3). Si hay nueva versión aprobada en el fork, diálogo con "¿Descargar ahora?" (REQ-U4). Tras descarga y verificación de firma/hash (REQ-U6), segundo diálogo "¿Instalar ahora?". Eliminar descargas en segundo plano y auto-instalación (REQ-U5). Test negativo automatizado (REQ-U5).
+- **Estimación:** 3 SP
+- **Descripción:** Reemplazar el flujo de actualización automática silenciosa por una consulta simple al usuario: comprobar si existe una nueva versión disponible en el repositorio del fork y, de haberla, preguntar al usuario si desea actualizar o no. Eliminar descargas e instalaciones automáticas sin consentimiento, sin requerir doble confirmación ni validación de hash adicional en la aplicación.
 - **Criterios de Aceptación:**
-  - Cero descargas si el usuario selecciona "No".
-  - Rechazo de paquetes alterados o con versión menor/igual (anti-rollback).
-  - Test unitario/suite que falle si existe ruta de descarga sin confirmación.
+  - Notificación al detectar una nueva versión en el repositorio consultando al usuario si desea actualizar o no.
+  - Cero descargas o actualizaciones si el usuario rechaza la actualización.
 
 ### HU-ORCH-04: Workflow Monitor del Upstream (Solo Alerta)
 - **ID:** HU-ORCH-04
