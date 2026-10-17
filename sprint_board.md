@@ -18,7 +18,11 @@
 
 - [ ] **HU-ORCH-12: Chromecast con CastV2 propio, sin Play Services** (contrato `SDD-chromecast-castv2.md`; C1 aprobado por el propietario, `AUDIT.md` §5.10)
   - [x] [Responsable: Claude PM/QA] Contrato SDD y registro de la decisión en `AUDIT.md`/`UPSTREAM.md`. Pendiente revisión del PO antes de lanzar a DeepSeek.
-  - [ ] [Responsable: DeepSeek Dev] T1 codec `CastMessage` + framing · T2 `CastChannel` TLS + pin TOFU · T3 `CastSession` (connection, heartbeat, receiver, `LAUNCH CC1AD845`) · T4 `CastMediaChannel` · T5 `CastV2Player` + `ChromecastPlayback` · T6 `CastDiscovery` (`NsdManager`) · T7 `ChromecastStreamServer` con token por sesión.
+  - [x] [Responsable: DeepSeek Dev] T1 codec `CastMessage` + framing (`cast/CastMessage.kt`, `CastMessageTest.kt`, vectores en `tests/fixtures/castv2/`).
+    - QA Claude: conforme a §4.2, §4.3 y CAST-INV-8/9 (sin `android.*`, cabecera AGPL-3.0-or-later, 281 y 229 líneas). Vectores `CONNECT` y `PING` verificados contra un codificador de referencia independiente.
+    - Corregido en QA: límite de 32 niveles al saltar grupos desconocidos (frame de 64 KiB con grupos anidados desbordaba la pila), `decodeFrame` rechaza bytes sobrantes, tests leen los `.hex` de `tests/fixtures/castv2/`, tests nuevos de límite exacto 65536, bytes sobrantes y grupos anidados.
+    - Pendiente: ejecutar `testDebugUnitTest` en Actions (sin SDK de Android en local) y decisión del propietario sobre el titular del copyright de los archivos nuevos (hoy `SFG545`).
+  - [ ] [Responsable: DeepSeek Dev] T2 `CastChannel` TLS + pin TOFU · T3 `CastSession` (connection, heartbeat, receiver, `LAUNCH CC1AD845`) · T4 `CastMediaChannel` · T5 `CastV2Player` + `ChromecastPlayback` · T6 `CastDiscovery` (`NsdManager`) · T7 `ChromecastStreamServer` con token por sesión.
   - [ ] [Responsable: Claude PM/QA] Q1 retiro de `media3-cast` y restos de Play Services · Q2 UI en `FrostedDevicesScreen.kt`, `SettingsPages.kt`, `SettingsIndex.kt`, `ChromecastSettingsRow.kt` · Q3 tests y verificación de `CAST-INV-*` · Q4 auditoría y zonas protegidas.
   - [ ] [Responsable: Antigravity PO] I1 rama `integrate/hu-orch-12` y commits `audit-fork:` por tarea.
   - Fase 2 (escritorio C++/Qt): fuera del sprint hasta orden del PO.
