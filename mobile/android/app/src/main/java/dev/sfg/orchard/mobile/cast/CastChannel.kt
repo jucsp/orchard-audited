@@ -35,7 +35,7 @@ class CastChannel(
     val port: Int,
     val deviceId: String,
     val trustStore: CastTrustStore,
-    private val socketFactory: SocketFactory? = null,
+    internal val socketFactory: SocketFactory? = null,
     val connectionTimeoutMs: Int = 5000,
     val requestTimeoutMs: Long = 10000L
 ) : AutoCloseable {
