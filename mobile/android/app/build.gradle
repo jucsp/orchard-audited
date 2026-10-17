@@ -291,7 +291,6 @@ dependencies {
     implementation 'androidx.media3:media3-exoplayer-hls:1.11.1'
     implementation 'androidx.media3:media3-session:1.11.1'
     implementation 'androidx.media3:media3-ui:1.11.1'
-    implementation 'androidx.media3:media3-cast:1.11.1'
 
     // No release tag exists upstream yet; pin the Kawarp-AGSL commit for reproducible builds.
     implementation 'com.github.meowarex:kawarp-agsl:30715d619a'

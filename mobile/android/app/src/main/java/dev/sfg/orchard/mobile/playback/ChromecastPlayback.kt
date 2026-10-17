@@ -20,100 +20,172 @@
 package dev.sfg.orchard.mobile.playback
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
-import androidx.media3.cast.RemoteCastPlayer
-import androidx.media3.cast.SessionAvailabilityListener
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import dev.sfg.orchard.mobile.cast.CastChannel
+import dev.sfg.orchard.mobile.cast.CastDevice
+import dev.sfg.orchard.mobile.cast.CastDeviceVolume
+import dev.sfg.orchard.mobile.cast.CastMediaChannel
+import dev.sfg.orchard.mobile.cast.CastSecurityException
+import dev.sfg.orchard.mobile.cast.CastSession
+import dev.sfg.orchard.mobile.cast.CastSessionState
+import dev.sfg.orchard.mobile.cast.CastTrustStore
+import dev.sfg.orchard.mobile.cast.CastV2Player
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
+import okhttp3.OkHttpClient
 
-/** Owns the local/receiver handoff while keeping one authoritative Media3 queue. */
+/**
+ * Owns the local/receiver handoff while keeping one authoritative Media3 queue on the phone.
+ *
+ * Call from the main thread. TLS, LAUNCH and teardown run on a private thread because they block
+ * on the socket; the connect callbacks are delivered on the main thread. Nothing touches the
+ * network until [connectToDevice] (CAST-INV-3).
+ */
 @UnstableApi
 class ChromecastPlayback(
     context: Context,
-    private val converter: ChromecastMediaItemConverter,
+    private val client: OkHttpClient,
+    private val resolver: YouTubeStreamResolver,
+    private val trustStore: CastTrustStore,
     private val localPlayer: () -> Player,
-    private val onCastStarted: (Player) -> Unit,
-    private val onCastEnded: (Player) -> Unit,
-    private val onError: (String) -> Unit,
 ) : AutoCloseable {
-    val player: RemoteCastPlayer =
-        RemoteCastPlayer.Builder(context).setMediaItemConverter(converter).build()
+    private val appContext = context.applicationContext
+    private val main = Handler(Looper.getMainLooper())
+    private val io = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "orchard-cast-connect").apply { isDaemon = true }
+    }
 
-    var isActive: Boolean = false
+    private class Connection(
+        val streamServer: ChromecastStreamServer,
+        val channel: CastChannel,
+        val session: CastSession,
+        val mediaChannel: CastMediaChannel,
+        val player: CastV2Player,
+        val phoneState: TransferState,
+        val onEnded: (Player) -> Unit,
+        val sessionListener: (CastSessionState) -> Unit,
+    )
+
+    private var connection: Connection? = null
+    private var closed = false
+
+    var isConnecting: Boolean = false
         private set
 
-    private var lastRemoteState = TransferState.EMPTY
-    private var lastPhoneState = TransferState.EMPTY
+    val isActive: Boolean
+        get() = connection != null
 
-    private val remoteListener =
-        object : Player.Listener {
-            override fun onEvents(player: Player, events: Player.Events) {
-                if (player.mediaItemCount > 0) lastRemoteState = TransferState.capture(player)
+    fun authoritativePlayer(): Player = connection?.player ?: localPlayer()
+
+    fun connectToDevice(
+        device: CastDevice,
+        onStarted: (Player) -> Unit,
+        onEnded: (Player) -> Unit,
+        onError: (String) -> Unit,
+    ) {
+        if (closed || isConnecting || connection != null) {
+            onError("Disconnect the current Cast device first")
+            return
+        }
+        isConnecting = true
+        io.execute {
+            val streamServer =
+                try {
+                    ChromecastStreamServer(appContext, client, resolver, receiverIp = device.host)
+                } catch (error: Exception) {
+                    failConnect(error, onError)
+                    return@execute
+                }
+            val channel = CastChannel(device.host, device.port, device.id, trustStore)
+            val session = CastSession(channel)
+            try {
+                session.connectAndLaunch()
+            } catch (error: Exception) {
+                teardown(null, session, channel, streamServer, stopReceiver = false)
+                failConnect(error, onError)
+                return@execute
+            }
+            val mediaChannel = CastMediaChannel(session)
+            main.post {
+                start(streamServer, channel, session, mediaChannel, onStarted, onEnded, onError)
             }
         }
+    }
 
-    private val sessionListener =
-        object : SessionAvailabilityListener {
-            override fun onCastSessionAvailable() = transferToReceiver()
-
-            override fun onCastSessionUnavailable() = transferToPhone()
+    private fun start(
+        streamServer: ChromecastStreamServer,
+        channel: CastChannel,
+        session: CastSession,
+        mediaChannel: CastMediaChannel,
+        onStarted: (Player) -> Unit,
+        onEnded: (Player) -> Unit,
+        onError: (String) -> Unit,
+    ) {
+        isConnecting = false
+        if (closed) {
+            io.execute { teardown(mediaChannel, session, channel, streamServer, stopReceiver = false) }
+            return
         }
-
-    init {
-        player.addListener(remoteListener)
-    }
-
-    /** Starts observing Cast only after the service has stored this owner. */
-    fun start() {
-        player.setSessionAvailabilityListener(sessionListener)
-        if (player.isCastSessionAvailable) transferToReceiver()
-    }
-
-    fun authoritativePlayer(): Player = if (isActive) player else localPlayer()
-
-    private fun transferToReceiver() {
-        if (isActive) return
+        val castPlayer = CastV2Player(Looper.getMainLooper(), session, mediaChannel, streamServer)
         val local = localPlayer()
         val state = TransferState.capture(local)
-        lastPhoneState = state
+        val sessionListener: (CastSessionState) -> Unit = { next ->
+            if (next == CastSessionState.DISCONNECTED) {
+                main.post { if (connection?.session === session) disconnect(stopReceiver = false) }
+            }
+        }
+        session.addStateListener(sessionListener)
+        connection =
+            Connection(streamServer, channel, session, mediaChannel, castPlayer, state, onEnded, sessionListener)
         runCatching {
                 local.pause()
-                if (state.items.isEmpty()) {
-                    player.clearMediaItems()
-                } else {
-                    player.setMediaItems(state.items, state.index, state.positionMs)
+                castPlayer.repeatMode = state.repeatMode
+                if (state.items.isNotEmpty()) {
+                    castPlayer.setMediaItems(state.items, state.index, state.positionMs)
                 }
-                player.setPlaylistMetadata(state.playlistMetadata)
-                player.repeatMode = state.repeatMode
-                player.shuffleModeEnabled = state.shuffle
-                lastRemoteState = state
-                isActive = true
-                onCastStarted(player)
-                if (state.items.isNotEmpty()) player.prepare()
-                player.playWhenReady = state.playWhenReady
+                castPlayer.playWhenReady = state.playWhenReady
+                onStarted(castPlayer)
+                if (state.items.isNotEmpty()) castPlayer.prepare()
             }
             .onFailure { error ->
-                Log.w(TAG, "Could not transfer playback to Cast", error)
-                isActive = false
+                Log.w(TAG, "Could not transfer playback to Cast: ${error.javaClass.simpleName}")
+                connection = null
+                session.removeStateListener(sessionListener)
+                castPlayer.release()
+                io.execute { teardown(mediaChannel, session, channel, streamServer, stopReceiver = false) }
                 local.playWhenReady = state.playWhenReady
-                onError(error.message ?: "Could not start Chromecast playback")
+                onError("Could not start Chromecast playback")
+                return
             }
+        // The receiver may have dropped the session before the listener was attached.
+        if (session.state == CastSessionState.DISCONNECTED) disconnect(stopReceiver = false)
     }
 
-    private fun transferToPhone() {
-        if (!isActive) return
-        val remoteState =
-            if (player.mediaItemCount > 0) TransferState.capture(player) else lastRemoteState
-        val phoneItems = restorePhoneQueue(remoteState.items)
-        val state = remoteState.copy(
-            items = phoneItems,
-            index = if (phoneItems.isEmpty()) 0 else remoteState.index.coerceIn(phoneItems.indices),
-        )
+    /**
+     * Returns playback to the phone at the receiver's position. [stopReceiver] sends media STOP
+     * first; without it the session only gets CLOSE, as when the device itself went away.
+     */
+    fun disconnect(stopReceiver: Boolean = true) {
+        val conn = connection ?: return
+        connection = null
+        conn.session.removeStateListener(conn.sessionListener)
+        val remote = TransferState.capture(conn.player)
+        val state =
+            if (remote.items.isEmpty()) conn.phoneState
+            else remote.copy(shuffle = conn.phoneState.shuffle, playlistMetadata = conn.phoneState.playlistMetadata)
+        conn.player.release()
+        io.execute {
+            teardown(conn.mediaChannel, conn.session, conn.channel, conn.streamServer, stopReceiver)
+        }
         val local = localPlayer()
-        isActive = false
         runCatching {
                 local.stop()
                 if (state.items.isEmpty()) {
@@ -125,41 +197,78 @@ class ChromecastPlayback(
                 local.repeatMode = state.repeatMode
                 local.shuffleModeEnabled = state.shuffle
                 if (state.items.isNotEmpty()) local.prepare()
-                onCastEnded(local)
+                conn.onEnded(local)
                 local.playWhenReady = state.playWhenReady
             }
             .onFailure { error ->
-                Log.w(TAG, "Could not return Cast playback to phone", error)
-                onCastEnded(local)
-                onError(error.message ?: "Could not return playback to this phone")
+                Log.w(TAG, "Could not return Cast playback to phone: ${error.javaClass.simpleName}")
+                conn.onEnded(local)
             }
     }
 
-    private fun restorePhoneQueue(remoteItems: List<MediaItem>): List<MediaItem> {
-        if (remoteItems.isEmpty()) return lastPhoneState.items
-        val originalItems = lastPhoneState.items
-        val sameQueueSize = remoteItems.size == originalItems.size
-        val restored = remoteItems.mapIndexed { index, remoteItem ->
-            converter.originalFor(remoteItem.mediaId)
-                ?: remoteItem.takeIf { item ->
-                    item.localConfiguration?.uri?.let(MediaItemMapper::isOrchardUri) == true
-                }
-                // Media3 sometimes exposes MediaItem.EMPTY for queue entries that Cast
-                // did not include in its latest status. Their order remains usable.
-                ?: originalItems.getOrNull(index).takeIf { sameQueueSize }
-        }
-        if (restored.any { it == null }) {
-            Log.w(TAG, "Cast queue had entries without local media; restoring the phone queue")
-            return originalItems
-        }
-        return restored.filterNotNull()
+    /** Receiver volume, 0..1. This is the level that matters on a Nest or Home speaker. */
+    fun setDeviceVolume(level: Float) {
+        val session = connection?.session ?: return
+        io.execute { session.setDeviceVolume(level) }
     }
 
+    fun setDeviceMuted(muted: Boolean) {
+        val session = connection?.session ?: return
+        io.execute { session.setDeviceMuted(muted) }
+    }
+
+    fun getDeviceVolume(): CastDeviceVolume? = connection?.session?.receiverVolume
+
     override fun close() {
-        player.setSessionAvailabilityListener(null)
-        player.removeListener(remoteListener)
-        isActive = false
-        player.release()
+        if (closed) return
+        closed = true
+        connection?.let { conn ->
+            connection = null
+            conn.session.removeStateListener(conn.sessionListener)
+            conn.player.release()
+            io.execute {
+                teardown(conn.mediaChannel, conn.session, conn.channel, conn.streamServer, stopReceiver = true)
+            }
+        }
+        // Queued teardowns still run after shutdown().
+        io.shutdown()
+    }
+
+    private fun failConnect(error: Exception, onError: (String) -> Unit) {
+        // CAST-INV-6: exception messages can carry the device id, so only the type is logged.
+        Log.w(TAG, "Could not connect to Cast device: ${error.javaClass.simpleName}")
+        main.post {
+            isConnecting = false
+            onError(messageFor(error))
+        }
+    }
+
+    private fun teardown(
+        mediaChannel: CastMediaChannel?,
+        session: CastSession,
+        channel: CastChannel,
+        streamServer: ChromecastStreamServer,
+        stopReceiver: Boolean,
+    ) {
+        if (stopReceiver && mediaChannel != null && mediaChannel.currentStatus != null) {
+            runCatching { mediaChannel.stop().get(STOP_TIMEOUT_MS, TimeUnit.MILLISECONDS) }
+        }
+        runCatching { mediaChannel?.close() }
+        runCatching { session.close() }
+        runCatching { channel.close() }
+        runCatching { streamServer.close() }
+    }
+
+    private fun messageFor(error: Throwable): String {
+        val causes = generateSequence(error) { it.cause }.toList()
+        val security = causes.firstOrNull { it is CastSecurityException }
+        return when {
+            security?.message?.contains("mismatch") == true ->
+                "This Cast device presented a different certificate. Connection aborted"
+            security != null -> "This Cast device is not on a private local network"
+            causes.any { it is TimeoutException } -> "The Cast device did not respond"
+            else -> "Could not connect to the Cast device"
+        }
     }
 
     private data class TransferState(
@@ -172,17 +281,6 @@ class ChromecastPlayback(
         val playlistMetadata: MediaMetadata,
     ) {
         companion object {
-            val EMPTY =
-                TransferState(
-                    items = emptyList(),
-                    index = 0,
-                    positionMs = 0,
-                    playWhenReady = false,
-                    repeatMode = Player.REPEAT_MODE_OFF,
-                    shuffle = false,
-                    playlistMetadata = MediaMetadata.EMPTY,
-                )
-
             fun capture(player: Player): TransferState {
                 val items = (0 until player.mediaItemCount).map(player::getMediaItemAt)
                 return TransferState(
@@ -206,5 +304,6 @@ class ChromecastPlayback(
 
     private companion object {
         const val TAG = "OrchardCast"
+        const val STOP_TIMEOUT_MS = 2_000L
     }
 }
