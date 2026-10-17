@@ -7,6 +7,7 @@
  */
 package dev.sfg.orchard.mobile.cast
 
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledFuture
@@ -54,6 +55,7 @@ class CastSession(
     private val launchTimeoutMs: Long = 30000L
     private val stateLock = Any()
     private val stateListeners = CopyOnWriteArrayList<(CastSessionState) -> Unit>()
+    private val messageListeners = CopyOnWriteArrayList<(CastMessage) -> Unit>()
     private val closing = AtomicBoolean(false)
     private val reconnectAttempt = AtomicInteger(0)
     private val lastInboundAt = AtomicLong(0L)
@@ -81,6 +83,27 @@ class CastSession(
 
     fun removeStateListener(listener: (CastSessionState) -> Unit) {
         stateListeners.remove(listener)
+    }
+
+    /**
+     * Unsolicited messages with valid JSON from whichever channel is active, so
+     * subscribers survive a reconnection. Runs on the reader thread: must not block.
+     */
+    fun addMessageListener(listener: (CastMessage) -> Unit) {
+        messageListeners.add(listener)
+    }
+
+    fun removeMessageListener(listener: (CastMessage) -> Unit) {
+        messageListeners.remove(listener)
+    }
+
+    /** Sends a correlated request on the active channel. */
+    fun sendRequest(namespace: String, destinationId: String, payloadJson: String): CompletableFuture<CastMessage> =
+        activeChannel.sendRequest(namespace, destinationId, SENDER_ID, payloadJson)
+
+    /** Ends the session after a protocol violation detected by a sub-channel (CAST-INV-8). */
+    internal fun abort() {
+        terminate()
     }
 
     /** Opens the channel, connects to the receiver and reaches [CastSessionState.READY]. */
@@ -205,6 +228,12 @@ class CastSession(
             return
         } ?: return
         val type = obj.field("type")?.asString() ?: return
+        messageListeners.forEach { listener ->
+            try {
+                listener(message)
+            } catch (_: Exception) {
+            }
+        }
         when (message.namespace) {
             NS_HEARTBEAT -> if (type == "PING") {
                 sendPong(message.sourceId.ifBlank { RECEIVER_ID }, obj.field("requestId")?.asDouble()?.toInt())
