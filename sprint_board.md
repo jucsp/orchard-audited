@@ -12,14 +12,12 @@
 - [ ] **HU-ORCH-04: Workflow Monitor del Upstream**
   - [Responsable: Claude PM/QA] Crear `.github/workflows/monitor-upstream.yml` fijado por SHA, permisos mínimos y creación de issue con diff.
 
-- [ ] **HU-ORCH-11: Soporte y Compilación para Android TV (D-Pad & Leanback)**
-  - [Responsable: Claude PM/QA] Adaptación de UI, navegación con D-Pad focus traversal, manifiesto Leanback y generación de APK en el pipeline de releases.
-  - [Responsable: DeepSeek Dev] Integración del reproductor y sincronización continua con Orchard Connect en Android TV.
-
 ---
 
 ## 🏗️ In Progress
-_(vacío)_
+- [ ] **HU-ORCH-11: Soporte y Compilación para Android TV (D-Pad & Leanback)**
+  - [Responsable: Claude PM/QA] Contrato SDD (`SDD-android-tv.md`), verificación QA profunda (unitarias y funcionales) y pipeline CI de release TV.
+  - [Responsable: DeepSeek Dev] Implementación de layouts Jetpack Compose TV (`dev.sfg.orchard.mobile.ui.tv.*`), sistema de foco D-pad (`Modifier.tvFocus`), rail expandible, reproductor con panel Letras/Cola, detalle de colección, búsqueda con teclado TV, biblioteca y parche en `UpdateManager.kt`.
 
 ---
 
