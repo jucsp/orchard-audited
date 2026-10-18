@@ -51,7 +51,7 @@ Rutas donde el fork tiene o tendrá parches. Ningún cambio del upstream las sob
 | `README.md` (bloque inicial REQ-R3) | Aviso de fork de auditoría y verificación de descargas | REQ-R3 | activa |
 | `AUDIT.md`, `UPSTREAM.md` | Trazabilidad de auditorías y cambios del fork | REQ-R4, R5 | activa |
 | `AGENTS.md`, `CLAUDE.md`, `GEMINI.md` | Gobernanza del Swarm. `AGENTS.md` es archivo del upstream: conservar su línea `@contributing.md` y reaplicar el bloque del fork si el upstream lo cambia | INV-7 | activa |
-| `SDD-orchard-audit-fork.md`, `SDD-chromecast-castv2.md`, `backlog.md`, `sprint_board.md`, `technical_memory.md` | Contratos y planificación del fork | — | activa |
+| `SDD-orchard-audit-fork.md`, `SDD-chromecast-castv2.md`, `SDD-android-tv.md`, `backlog.md`, `sprint_board.md`, `technical_memory.md` | Contratos y planificación del fork | — | activa |
 
 ## Rebase sobre un tag nuevo
 
