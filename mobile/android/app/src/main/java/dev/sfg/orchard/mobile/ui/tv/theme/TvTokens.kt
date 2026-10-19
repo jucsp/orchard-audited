@@ -3,6 +3,7 @@
 
 package dev.sfg.orchard.mobile.ui.tv.theme
 
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -13,31 +14,52 @@ import dev.sfg.orchard.connect.R
 import dev.sfg.orchard.mobile.ui.theme.CanopyColors
 
 /**
- * Single source of truth for the Android TV "Glass Rail" metrics and typography (Spec §4).
- *
- * Margins live here and only here (TV-INV-2). Screens never hardcode overscan values.
+ * Single source of truth for the TV metrics and typography (redesign 2026-10-19).
+ * Mockup pixels are 1920x1080, so every value here is the mockup value divided by two.
  */
 object TvTokens {
-    /** Safe-area insets: 48 dp sides, 27 dp top/bottom (TV-INV-2). */
+    /** Safe area: 48 dp sides, 27 dp top/bottom (TV-INV-2). Nothing focusable goes outside it. */
     val OverscanHorizontal = 48.dp
     val OverscanVertical = 27.dp
 
-    /** The collapsed rail is icon-only; expanded it overlays the content without resizing it. */
-    val RailCollapsedWidth = 68.dp
-    val RailExpandedWidth = 210.dp
+    /** Floating rail capsule. It starts at the safe edge, so its icons never sit in the overscan. */
+    val RailStart = 48.dp
+    val RailCollapsedWidth = 44.dp
+    val RailExpandedWidth = 180.dp
 
-    /** Content always starts at x = 92 dp, whether or not the rail is expanded. */
-    val ContentStartX = 92.dp
+    /** Content starts after the capsule plus a 24 dp gap. */
+    val ContentStartX = 116.dp
 
-    val ShelfColumns = 6
+    /** The expanded rail pushes the content right by this much instead of covering it. */
+    val RailPush = RailExpandedWidth - RailCollapsedWidth
+
+    val ShelfColumns = 5
     val ShelfGap = 16.dp
 
-    val CardRadius = 7.dp
-    val HeroArtworkRadius = 12.dp
-    val ListRowRadius = 8.dp
+    val CardRadius = 8.dp
+    val HeroArtworkRadius = 14.dp
+    val HeroCardRadius = 16.dp
+    val ListRowRadius = 10.dp
     val KeyboardKeyRadius = 7.dp
+    val PanelRadius = 18.dp
+    val SettingsCardRadius = 13.dp
 
-    /** Inter is already bundled in res/font; ExtraBold is not, so Bold stands in for 800. */
+    /** Focus system (mockup 4). */
+    val FocusBorder = 2.dp
+    const val FocusGlowAlpha = 0.35f
+    const val FocusPressedScale = 0.98f
+
+    /** Backdrop scrims. The player stays bright; menus are a little darker. */
+    const val MenuArtworkScrim = 0.52f
+    val PlayerScrimColor = Color(0xFF06060C)
+
+    /** Translucent surfaces that let the backdrop show through. */
+    val GlassSurface = Color(0xFF0C0C14).copy(alpha = 0.45f)
+    val GlassSurfaceFocused = Color(0xFF2E2E42).copy(alpha = 0.82f)
+    val GlassPanel = Color(0xFF0C0A14).copy(alpha = 0.32f)
+    val GlassBorder = Color.White.copy(alpha = 0.16f)
+
+    /** Inter is bundled in res/font; ExtraBold is not, so Bold stands in for 800. */
     val TvFontFamily = FontFamily(
         Font(R.font.inter_regular, FontWeight.Normal),
         Font(R.font.inter_medium, FontWeight.Medium),
@@ -48,8 +70,8 @@ object TvTokens {
     val tvDisplay = TextStyle(
         fontFamily = TvFontFamily,
         fontWeight = FontWeight.Bold,
-        fontSize = 44.sp,
-        lineHeight = 46.sp,
+        fontSize = 36.sp,
+        lineHeight = 39.sp,
         letterSpacing = (-1).sp,
         color = CanopyColors.Text,
     )
@@ -57,31 +79,33 @@ object TvTokens {
     val tvHeadline = TextStyle(
         fontFamily = TvFontFamily,
         fontWeight = FontWeight.Bold,
-        fontSize = 32.sp,
-        lineHeight = 35.sp,
+        fontSize = 26.sp,
+        lineHeight = 30.sp,
+        letterSpacing = (-0.7).sp,
         color = CanopyColors.Text,
     )
 
     val tvTitleNowPlaying = TextStyle(
         fontFamily = TvFontFamily,
         fontWeight = FontWeight.Bold,
-        fontSize = 26.sp,
-        lineHeight = 30.sp,
+        fontSize = 34.sp,
+        lineHeight = 37.sp,
+        letterSpacing = (-1).sp,
         color = CanopyColors.Text,
     )
 
     val tvShelf = TextStyle(
         fontFamily = TvFontFamily,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 18.sp,
-        lineHeight = 22.sp,
+        fontWeight = FontWeight.Bold,
+        fontSize = 16.sp,
+        lineHeight = 20.sp,
         color = CanopyColors.Text,
     )
 
     val tvLyricActive = TextStyle(
         fontFamily = TvFontFamily,
         fontWeight = FontWeight.Bold,
-        fontSize = 28.sp,
+        fontSize = 29.sp,
         lineHeight = 34.sp,
         color = CanopyColors.Text,
     )
@@ -89,8 +113,8 @@ object TvTokens {
     val tvLyric = TextStyle(
         fontFamily = TvFontFamily,
         fontWeight = FontWeight.Bold,
-        fontSize = 24.sp,
-        lineHeight = 30.sp,
+        fontSize = 22.sp,
+        lineHeight = 28.sp,
         color = CanopyColors.Text,
     )
 
@@ -102,20 +126,28 @@ object TvTokens {
         color = CanopyColors.Text,
     )
 
+    val tvCardTitle = TextStyle(
+        fontFamily = TvFontFamily,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 13.sp,
+        lineHeight = 16.sp,
+        color = CanopyColors.Text,
+    )
+
     val tvMeta = TextStyle(
         fontFamily = TvFontFamily,
         fontWeight = FontWeight.Normal,
         fontSize = 11.sp,
         lineHeight = 15.sp,
-        color = CanopyColors.Muted,
+        color = Color(0xFFB7C2CD),
     )
 
     val tvEyebrow = TextStyle(
         fontFamily = TvFontFamily,
         fontWeight = FontWeight.Bold,
-        fontSize = 10.sp,
-        lineHeight = 13.sp,
-        letterSpacing = 1.2.sp,
+        fontSize = 9.sp,
+        lineHeight = 12.sp,
+        letterSpacing = 1.sp,
         color = CanopyColors.Eyebrow,
     )
 }

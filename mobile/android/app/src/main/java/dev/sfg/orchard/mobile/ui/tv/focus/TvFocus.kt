@@ -14,6 +14,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -28,58 +29,61 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import dev.sfg.orchard.mobile.ui.theme.LocalAccent
+import dev.sfg.orchard.mobile.ui.tv.theme.TvTokens
 
 /** The six canonical focus treatments; no ad-hoc focus styles are allowed (TV-INV-3). */
 enum class TvFocusStyle { Card, Button, Row, Key, NavItem, Transport }
 
+private fun TvFocusStyle.focusedScale(): Float = when (this) {
+    TvFocusStyle.Card, TvFocusStyle.Button, TvFocusStyle.NavItem -> 1.05f
+    TvFocusStyle.Row -> 1.03f
+    TvFocusStyle.Key -> 1.08f
+    TvFocusStyle.Transport -> 1.05f
+}
+
+private fun TvFocusStyle.glowElevation() = when (this) {
+    TvFocusStyle.Card -> 30.dp
+    TvFocusStyle.Transport -> 34.dp
+    TvFocusStyle.Row -> 18.dp
+    TvFocusStyle.Button, TvFocusStyle.Key, TvFocusStyle.NavItem -> 22.dp
+}
+
 /**
- * The single focus treatment for the TV tree. It observes the focus target that follows it, so it
- * must come before `clickable`/`focusable` and before any `clip` or `background`: those then scale
- * with the node instead of clipping the glow and border away. Scaling lives in [graphicsLayer] so
- * layout never moves, and the focused node raises its [zIndex] above its neighbours.
+ * The single focus treatment (mockup 4): scale 1.05 (rows 1.03, keys 1.08), a 2 dp white border,
+ * an accent glow and elevation. Pressing OK shrinks to 0.98 for tactile feedback.
+ *
+ * It must come before `clickable`/`focusable` and before any `clip` or `background`, so those scale
+ * with the node instead of clipping the glow. Scaling lives in [graphicsLayer]; layout never moves.
+ * [onFocusChange] lets components that invert their fill (buttons, rail items) react to focus.
  */
 @Composable
 fun Modifier.tvFocus(
     style: TvFocusStyle,
     shape: Shape,
     onFocus: (() -> Unit)? = null,
+    onFocusChange: ((Boolean) -> Unit)? = null,
+    pressed: Boolean = false,
 ): Modifier {
     var focused by remember { mutableStateOf(false) }
     val accent = LocalAccent.current
 
-    val scaleTarget = when (style) {
-        TvFocusStyle.Card -> 1.05f
-        TvFocusStyle.Button -> 1.05f
-        TvFocusStyle.Row -> 1.02f
-        TvFocusStyle.Key -> 1.08f
-        TvFocusStyle.NavItem -> 1.05f
-        TvFocusStyle.Transport -> 1.06f
+    val target = when {
+        focused && pressed -> TvTokens.FocusPressedScale
+        focused -> style.focusedScale()
+        else -> 1f
     }
-    val borderWidth = when (style) {
-        TvFocusStyle.Card -> 2.dp
-        TvFocusStyle.Row -> 1.5.dp
-        TvFocusStyle.Transport -> 2.5.dp
-        TvFocusStyle.Button, TvFocusStyle.Key, TvFocusStyle.NavItem -> 0.dp
+    val scale by animateFloatAsState(target, spring(dampingRatio = 0.75f, stiffness = 350f), label = "TvFocusScale")
+    val border by animateDpAsState(if (focused) TvTokens.FocusBorder else 0.dp, tween(150), label = "TvFocusBorder")
+    val glowTarget = when {
+        !focused -> 0.dp
+        pressed -> style.glowElevation() / 3
+        else -> style.glowElevation()
     }
-    val glowElevation = when (style) {
-        TvFocusStyle.Card -> 28.dp
-        TvFocusStyle.Button -> 20.dp
-        TvFocusStyle.Row -> 12.dp
-        TvFocusStyle.Key -> 16.dp
-        TvFocusStyle.NavItem -> 20.dp
-        TvFocusStyle.Transport -> 24.dp
-    }
-
-    val scale by animateFloatAsState(
-        targetValue = if (focused) scaleTarget else 1f,
-        animationSpec = spring(dampingRatio = 0.75f, stiffness = 350f),
-        label = "TvFocusScale",
-    )
-    val border by animateDpAsState(if (focused) borderWidth else 0.dp, tween(180), label = "TvFocusBorder")
-    val glow by animateDpAsState(if (focused) glowElevation else 0.dp, tween(180), label = "TvFocusGlow")
+    val glow by animateDpAsState(glowTarget, tween(if (focused) 150 else 120), label = "TvFocusGlow")
 
     return this
         .onFocusChanged { state ->
+            if (focused != state.isFocused) onFocusChange?.invoke(state.isFocused)
             focused = state.isFocused
             if (state.isFocused) onFocus?.invoke()
         }
@@ -93,14 +97,14 @@ fun Modifier.tvFocus(
                 Modifier.shadow(
                     glow,
                     shape = shape,
-                    ambientColor = accent.copy(alpha = 0.40f),
-                    spotColor = accent.copy(alpha = 0.40f),
+                    ambientColor = accent.copy(alpha = TvTokens.FocusGlowAlpha),
+                    spotColor = accent.copy(alpha = TvTokens.FocusGlowAlpha),
                 )
             } else {
                 Modifier
             },
         )
-        .border(border, if (focused) accent.copy(alpha = 0.9f) else Color.Transparent, shape)
+        .border(border, if (focused) Color.White else Color.Transparent, shape)
 }
 
 /** Focus treatment plus one clickable focus target. No ripple: the focus treatment is the feedback. */
@@ -110,11 +114,13 @@ fun Modifier.tvClickable(
     shape: Shape,
     enabled: Boolean = true,
     onFocus: (() -> Unit)? = null,
+    onFocusChange: ((Boolean) -> Unit)? = null,
     onClick: () -> Unit,
 ): Modifier {
     val source = remember { MutableInteractionSource() }
+    val pressed by source.collectIsPressedAsState()
     return this
-        .tvFocus(style, shape, onFocus = onFocus)
+        .tvFocus(style, shape, onFocus = onFocus, onFocusChange = onFocusChange, pressed = pressed)
         .clickable(interactionSource = source, indication = null, enabled = enabled, onClick = onClick)
 }
 
@@ -126,12 +132,14 @@ fun Modifier.tvLongClickable(
     shape: Shape,
     enabled: Boolean = true,
     onFocus: (() -> Unit)? = null,
+    onFocusChange: ((Boolean) -> Unit)? = null,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
 ): Modifier {
     val source = remember { MutableInteractionSource() }
+    val pressed by source.collectIsPressedAsState()
     return this
-        .tvFocus(style, shape, onFocus = onFocus)
+        .tvFocus(style, shape, onFocus = onFocus, onFocusChange = onFocusChange, pressed = pressed)
         .combinedClickable(
             interactionSource = source,
             indication = null,
@@ -147,14 +155,12 @@ fun Modifier.tvFocusable(
     style: TvFocusStyle,
     shape: Shape,
     onFocus: (() -> Unit)? = null,
+    onFocusChange: ((Boolean) -> Unit)? = null,
 ): Modifier = this
-    .tvFocus(style, shape, onFocus = onFocus)
+    .tvFocus(style, shape, onFocus = onFocus, onFocusChange = onFocusChange)
     .focusable()
 
-/**
- * Focus group that reports when D-pad focus enters any descendant. For embedded phone screens whose
- * focus targets do not use [tvFocus], so they can still collapse the rail.
- */
+/** Focus group that reports when D-pad focus enters any descendant (embedded phone screens). */
 fun Modifier.tvFocusWithin(onFocus: () -> Unit): Modifier = this
     .onFocusChanged { if (it.hasFocus) onFocus() }
     .focusGroup()

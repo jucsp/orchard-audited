@@ -3,42 +3,48 @@
 
 package dev.sfg.orchard.mobile.ui.tv.rail
 
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.LibraryMusic
-import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import dev.sfg.orchard.mobile.model.Track
 import dev.sfg.orchard.mobile.ui.components.ArtworkTile
+import dev.sfg.orchard.mobile.ui.components.OrchardMark
 import dev.sfg.orchard.mobile.ui.motion.PlayingBars
 import dev.sfg.orchard.mobile.ui.theme.CanopyColors
 import dev.sfg.orchard.mobile.ui.theme.LocalAccent
@@ -53,14 +59,14 @@ private val destinations = listOf(
     RailDestination(TvRoutes.HOME, "Inicio", Icons.Rounded.Home),
     RailDestination(TvRoutes.SEARCH, "Buscar", Icons.Rounded.Search),
     RailDestination(TvRoutes.LIBRARY, "Biblioteca", Icons.Rounded.LibraryMusic),
-    RailDestination(TvRoutes.SETTINGS, "Ajustes", Icons.Rounded.Person),
+    RailDestination(TvRoutes.SETTINGS, "Ajustes", Icons.Rounded.Settings),
 )
 
-private val ItemShape = RoundedCornerShape(10.dp)
-
 /**
- * Collapsed icon rail (68 dp) that expands to 210 dp when an item receives focus. The expanded pane
- * overlays the content instead of resizing it (TV-INV-2); the content keeps its x = 92 dp origin.
+ * Floating glass capsule (mockups 2A/2B). Collapsed it is 44 dp wide and vertically centred; when
+ * an item takes focus it grows to a 180 dp panel. The caller pushes the content right by
+ * [TvTokens.RailPush] while it is expanded, so the rail never covers titles or the mini player.
+ * The caller places it at x = [TvTokens.RailStart] so its icons stay inside the safe area.
  */
 @Composable
 fun TvNavigationRail(
@@ -72,58 +78,50 @@ fun TvNavigationRail(
     onRailFocus: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val accent = LocalAccent.current
     val width by animateDpAsState(
         targetValue = if (expanded) TvTokens.RailExpandedWidth else TvTokens.RailCollapsedWidth,
         animationSpec = spring(dampingRatio = 0.75f, stiffness = 350f),
         label = "TvRailWidth",
     )
+    val shape = RoundedCornerShape(if (expanded) 18.dp else 22.dp)
 
-    val railScrim = Brush.horizontalGradient(
-        0f to CanopyColors.Chrome.copy(alpha = 0.92f),
-        0.75f to CanopyColors.Chrome.copy(alpha = 0.75f),
-        1f to Color.Transparent,
-    )
-
-    Box(
+    Column(
         modifier = modifier
-            .fillMaxHeight()
+            .then(if (expanded) Modifier.fillMaxHeight().padding(vertical = TvTokens.OverscanVertical) else Modifier)
             .width(width)
-            .background(if (expanded) CanopyColors.GlassChrome.copy(alpha = 0.82f) else CanopyColors.Chrome.copy(alpha = 0.95f)),
+            .clip(shape)
+            .background(if (expanded) Color(0xFF0E0C16).copy(alpha = 0.78f) else TvTokens.GlassSurface)
+            .border(1.dp, TvTokens.GlassBorder, shape)
+            .padding(vertical = if (expanded) 16.dp else 7.dp, horizontal = if (expanded) 11.dp else 6.dp),
+        horizontalAlignment = if (expanded) Alignment.Start else Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        // Left-to-right scrim fades the collapsed rail into the content; expanded uses the glass panel.
-        if (!expanded) {
-            Box(Modifier.fillMaxHeight().width(TvTokens.RailCollapsedWidth).background(railScrim))
+        if (expanded) {
+            Row(Modifier.padding(horizontal = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                OrchardMark(Modifier.size(22.dp), contentDescription = null)
+                Spacer(Modifier.width(10.dp))
+                Text("Orchard", color = CanopyColors.Text, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            }
+            Spacer(Modifier.weight(1f))
         }
 
-        Column(
-            modifier = Modifier
-                .fillMaxHeight()
-                .padding(vertical = TvTokens.OverscanVertical),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            destinations.forEach { destination ->
-                RailItem(
-                    destination = destination,
-                    selected = currentRoute == destination.route,
-                    expanded = expanded,
-                    accent = accent,
-                    onSelect = { onSelect(destination.route) },
-                    onFocus = onRailFocus,
-                )
-            }
+        destinations.forEach { destination ->
+            RailItem(
+                destination = destination,
+                selected = currentRoute == destination.route,
+                expanded = expanded,
+                onSelect = { onSelect(destination.route) },
+                onFocus = onRailFocus,
+            )
+        }
 
-            Spacer(Modifier.weight(1f))
+        if (expanded) Spacer(Modifier.weight(1f))
 
-            if (nowPlayingTrack != null) {
-                NowPlayingTile(
-                    track = nowPlayingTrack,
-                    expanded = expanded,
-                    onClick = onOpenNowPlaying,
-                    onFocus = onRailFocus,
-                )
-                Spacer(Modifier.height(TvTokens.OverscanVertical))
+        if (nowPlayingTrack != null) {
+            if (!expanded) {
+                Box(Modifier.padding(vertical = 2.dp).width(20.dp).height(1.dp).background(Color.White.copy(alpha = 0.14f)))
             }
+            NowPlayingTile(nowPlayingTrack, expanded, onOpenNowPlaying, onRailFocus)
         }
     }
 }
@@ -133,96 +131,86 @@ private fun RailItem(
     destination: RailDestination,
     selected: Boolean,
     expanded: Boolean,
-    accent: Color,
     onSelect: () -> Unit,
     onFocus: () -> Unit,
 ) {
-    val pill by animateColorAsState(
-        targetValue = if (selected) accent.copy(alpha = 0.38f) else Color.Transparent,
-        animationSpec = tween(180),
-        label = "RailItemPill_${destination.route}",
-    )
-    val itemColor by animateColorAsState(
-        targetValue = if (selected) Color.White else Color.White.copy(alpha = 0.65f),
-        animationSpec = tween(180),
-        label = "RailItemColor_${destination.route}",
-    )
-
+    val accent = LocalAccent.current
+    var focused by remember { mutableStateOf(false) }
+    val shape = if (expanded) RoundedCornerShape(50) else CircleShape
+    // Focused inverts to a white pill; the current route keeps an accent tint (mockup 4).
+    val background = when {
+        focused -> CanopyColors.Text
+        selected -> accent.copy(alpha = 0.38f)
+        else -> Color.Transparent
+    }
+    val content = when {
+        focused -> CanopyColors.Chrome
+        selected -> Color.White
+        else -> Color.White.copy(alpha = 0.75f)
+    }
     Row(
-        modifier = Modifier
-            .padding(horizontal = 10.dp, vertical = 6.dp)
-            .width(if (expanded) TvTokens.RailExpandedWidth - 20.dp else 48.dp)
-            .height(40.dp)
-            .tvClickable(TvFocusStyle.NavItem, ItemShape, onFocus = onFocus, onClick = onSelect)
-            .clip(ItemShape)
-            .background(pill),
+        Modifier
+            .then(if (expanded) Modifier.fillMaxWidth().height(38.dp) else Modifier.size(32.dp))
+            .tvClickable(
+                TvFocusStyle.NavItem,
+                shape,
+                onFocus = onFocus,
+                onFocusChange = { focused = it },
+                onClick = onSelect,
+            )
+            .clip(shape)
+            .background(background)
+            .padding(horizontal = if (expanded) 13.dp else 0.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = if (expanded) Arrangement.Start else Arrangement.Center,
     ) {
+        Icon(destination.icon, contentDescription = destination.label, tint = content, modifier = Modifier.size(16.dp))
         if (expanded) {
-            Spacer(Modifier.width(14.dp))
-            Icon(destination.icon, destination.label, tint = itemColor, modifier = Modifier.size(22.dp))
-            Spacer(Modifier.width(14.dp))
+            Spacer(Modifier.width(10.dp))
             Text(
                 destination.label,
-                color = itemColor,
-                style = TvTokens.tvBody,
+                color = content,
+                fontSize = 13.sp,
+                fontWeight = if (focused || selected) FontWeight.Bold else FontWeight.Medium,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        } else {
-            Icon(
-                destination.icon,
-                destination.label,
-                tint = itemColor,
-                modifier = Modifier.align(Alignment.CenterVertically).size(22.dp),
             )
         }
     }
 }
 
 @Composable
-private fun NowPlayingTile(
-    track: Track,
-    expanded: Boolean,
-    onClick: () -> Unit,
-    onFocus: () -> Unit,
-) {
+private fun NowPlayingTile(track: Track, expanded: Boolean, onClick: () -> Unit, onFocus: () -> Unit) {
     val accent = LocalAccent.current
+    val shape = RoundedCornerShape(if (expanded) 12.dp else 8.dp)
+    if (!expanded) {
+        Box(
+            Modifier
+                .size(32.dp)
+                .tvClickable(TvFocusStyle.Card, shape, onFocus = onFocus, onClick = onClick)
+                .clip(shape),
+            contentAlignment = Alignment.Center,
+        ) {
+            ArtworkTile(track.artworkUrl, "Ahora suena: ${track.title}", Modifier.fillMaxSize(), 8)
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.4f)))
+            PlayingBars(accent, Modifier.size(14.dp))
+        }
+        return
+    }
     Row(
-        modifier = Modifier
-            .padding(horizontal = 10.dp, vertical = 6.dp)
-            .width(if (expanded) TvTokens.RailExpandedWidth - 20.dp else 48.dp)
-            .height(if (expanded) 48.dp else 40.dp)
-            .tvClickable(TvFocusStyle.NavItem, ItemShape, onFocus = onFocus, onClick = onClick)
-            .clip(ItemShape),
+        Modifier
+            .fillMaxWidth()
+            .tvClickable(TvFocusStyle.Card, shape, onFocus = onFocus, onClick = onClick)
+            .clip(shape)
+            .background(Color.White.copy(alpha = 0.08f))
+            .padding(7.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = if (expanded) Arrangement.Start else Arrangement.Center,
     ) {
-        if (expanded) {
-            ArtworkTile(track.artworkUrl, "Portada de ${track.title}", Modifier.size(32.dp), 6)
-            Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    "Ahora suena",
-                    style = TvTokens.tvMeta,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    track.title,
-                    style = TvTokens.tvBody.copy(color = CanopyColors.Text),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            PlayingBars(accent, Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
-        } else {
-            Box(Modifier.align(Alignment.CenterVertically), contentAlignment = Alignment.Center) {
-                ArtworkTile(track.artworkUrl, "Portada de ${track.title}", Modifier.size(28.dp), 6)
-                PlayingBars(accent, Modifier.size(12.dp))
-            }
+        ArtworkTile(track.artworkUrl, "Portada de ${track.title}", Modifier.size(36.dp), 7)
+        Spacer(Modifier.width(8.dp))
+        Column(Modifier.weight(1f)) {
+            Text("AHORA SUENA", color = accent, fontSize = 8.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp)
+            Text(track.title, style = TvTokens.tvCardTitle, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(track.artist, style = TvTokens.tvMeta, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }

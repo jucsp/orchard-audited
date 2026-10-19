@@ -21,6 +21,8 @@ object TvRoutes {
     const val ACCOUNT_SWITCH = "account_switch"
     const val DOWNLOADS = "downloads"
     const val SETTINGS_HOME_LAYOUT = "settings_home_layout"
+    /** Phone settings embedded in the safe area, for options the TV screen does not cover. */
+    const val SETTINGS_ADVANCED = "settings_advanced"
     const val MUSIC_VIDEO = "music_video"
     const val LISTENING_PARTY = "listening_party"
 
@@ -31,4 +33,7 @@ object TvRoutes {
 
     /** Rail destinations; everything else is pushed on top of one of these. */
     val topLevel = setOf(HOME, SEARCH, LIBRARY, SETTINGS)
+
+    /** Full-screen destinations: the rail is hidden and the backdrop switches to the player role. */
+    val immersive = setOf(NOW_PLAYING, MUSIC_VIDEO)
 }

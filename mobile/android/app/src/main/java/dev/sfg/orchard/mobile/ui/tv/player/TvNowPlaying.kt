@@ -3,7 +3,10 @@
 
 package dev.sfg.orchard.mobile.ui.tv.player
 
+import android.os.SystemClock
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,75 +14,58 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.rounded.FavoriteBorder
-import androidx.compose.material.icons.rounded.Groups
-import androidx.compose.material.icons.rounded.MoreVert
-import androidx.compose.material.icons.rounded.MusicNote
-import androidx.compose.material.icons.rounded.Pause
-import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material.icons.rounded.Repeat
-import androidx.compose.material.icons.rounded.RepeatOne
-import androidx.compose.material.icons.rounded.Shuffle
-import androidx.compose.material.icons.rounded.SkipNext
-import androidx.compose.material.icons.rounded.SkipPrevious
-import androidx.compose.material3.Icon
+import androidx.compose.material.icons.automirrored.rounded.QueueMusic
+import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import dev.sfg.orchard.mobile.model.LoadState
 import dev.sfg.orchard.mobile.model.LyricLine
 import dev.sfg.orchard.mobile.model.PlaybackSnapshot
-import dev.sfg.orchard.mobile.model.RepeatMode
 import dev.sfg.orchard.mobile.model.Track
 import dev.sfg.orchard.mobile.ui.components.ArtworkTile
-import dev.sfg.orchard.mobile.ui.components.LocalPlayerClock
 import dev.sfg.orchard.mobile.ui.components.LosslessBadge
+import dev.sfg.orchard.mobile.ui.components.rememberArtworkPalette
 import dev.sfg.orchard.mobile.ui.screens.LyricPeek
-import dev.sfg.orchard.mobile.ui.theme.CanopyColors
-import dev.sfg.orchard.mobile.ui.theme.LocalAccent
-import dev.sfg.orchard.mobile.ui.tv.focus.TvFocusStyle
-import dev.sfg.orchard.mobile.ui.tv.focus.tvClickable
-import dev.sfg.orchard.mobile.ui.tv.focus.tvFocusable
+import dev.sfg.orchard.mobile.ui.tv.prefs.TvPlayerPanel
+import dev.sfg.orchard.mobile.ui.tv.prefs.TvUiState
 import dev.sfg.orchard.mobile.ui.tv.theme.TvTokens
+import kotlinx.coroutines.delay
 
-/** The now-playing side panel machine (Spec §7.2). */
-enum class PanelState { Hidden, Lyrics, Queue }
+private val PanelShape = RoundedCornerShape(TvTokens.PanelRadius)
 
-private val TransportShape = CircleShape
-private val ProgressShape = RoundedCornerShape(4.dp)
-private val LikeShape = CircleShape
-private val SecondaryShape = RoundedCornerShape(50)
+/** How long the normal player stays visible after a key press in night mode. */
+private const val NightPeekMs = 8_000L
 
+/**
+ * Now playing (mockups 1A–1D). The side panel state is persisted in [TvUiState.playerPanel]:
+ * Lyrics/Queue show the two-column layout (1A/1B); Hidden shows the side-by-side layout (1C).
+ * In night mode (1D) the screen goes black with a tiny corner player; any D-pad key shows the
+ * normal player for [NightPeekMs], and Back leaves night mode.
+ */
 @Composable
 fun TvNowPlaying(
     playback: PlaybackSnapshot,
@@ -98,365 +84,247 @@ fun TvNowPlaying(
     onOpenMusicVideo: () -> Unit,
     onOpenListeningParty: () -> Unit,
     onTrackActions: (Track) -> Unit,
+    ui: TvUiState,
+    onPanelChange: (TvPlayerPanel) -> Unit,
+    nightMode: Boolean,
+    onNightModeChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var panel by rememberSaveable { mutableStateOf(PanelState.Hidden) }
+    val track = playback.currentTrack
+    val synced = (lyrics as? LoadState.Content)?.value?.any { it.startMs != null } == true
+    // Prefer lyrics, but fall back to the queue when the song has no synced lyrics (Spec §7.2).
+    val panel = if (ui.playerPanel == TvPlayerPanel.Lyrics && !synced && lyrics !is LoadState.Loading) {
+        TvPlayerPanel.Queue
+    } else {
+        ui.playerPanel
+    }
+
+    var menuOpen by remember { mutableStateOf(false) }
+    var peek by remember { mutableStateOf(false) }
+    var lastKeyAt by remember { mutableLongStateOf(0L) }
     val playFocus = remember { FocusRequester() }
-    val hasTrack = playback.currentTrack != null
-    LaunchedEffect(hasTrack) { if (hasTrack) playFocus.requestFocus() }
+
+    LaunchedEffect(nightMode) { peek = false }
+    LaunchedEffect(peek, lastKeyAt) {
+        if (nightMode && peek) {
+            delay(NightPeekMs)
+            peek = false
+        }
+    }
+
+    if (nightMode && !peek && track != null) {
+        TvNightPlayer(
+            playback = playback,
+            corner = ui.nightCorner,
+            onWake = {
+                lastKeyAt = SystemClock.uptimeMillis()
+                peek = true
+            },
+            onExit = { onNightModeChange(false) },
+            modifier = modifier,
+        )
+        return
+    }
+
+    // While peeking, Back leaves night mode instead of the screen.
+    BackHandler(enabled = nightMode) { onNightModeChange(false) }
+    LaunchedEffect(track != null, peek) { if (track != null) runCatching { playFocus.requestFocus() } }
+
+    val actions = TvTransportActions(
+        onToggle = onToggle,
+        onNext = onNext,
+        onPrevious = onPrevious,
+        onShuffle = onShuffle,
+        onRepeat = onRepeat,
+        onToggleLike = onToggleLike,
+        onNightMode = { onNightModeChange(true) },
+        onMore = { menuOpen = true },
+        onContentFocus = onContentFocus,
+    )
 
     Box(
         modifier
             .fillMaxSize()
-            .background(CanopyColors.PlayerBackdrop.copy(alpha = 0.55f)),
+            .onPreviewKeyEvent {
+                if (nightMode && it.type == KeyEventType.KeyDown) lastKeyAt = SystemClock.uptimeMillis()
+                false
+            },
     ) {
-        if (panel == PanelState.Hidden) {
-            Column(
-                Modifier.fillMaxSize().padding(start = TvTokens.ContentStartX, end = TvTokens.OverscanHorizontal),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
-            ) {
-                PlayerColumn(
-                    playback = playback,
-                    lyrics = lyrics,
-                    liked = liked,
-                    onToggle = onToggle,
-                    onNext = onNext,
-                    onPrevious = onPrevious,
-                    onSeek = onSeek,
-                    onShuffle = onShuffle,
-                    onRepeat = onRepeat,
-                    onToggleLike = onToggleLike,
-                    onContentFocus = onContentFocus,
-                    onOpenLyrics = { panel = PanelState.Lyrics },
-                    hasVideo = hasVideo,
-                    onOpenMusicVideo = onOpenMusicVideo,
-                    onOpenListeningParty = onOpenListeningParty,
-                    onTrackActions = onTrackActions,
-                    playFocus = playFocus,
-                )
-            }
-            EdgeTabs(
-                queueCount = playback.queue.size,
-                onSelect = { panel = it },
-                modifier = Modifier.align(Alignment.CenterEnd).padding(end = TvTokens.OverscanHorizontal),
-            )
-        } else {
-            Row(Modifier.fillMaxSize().padding(start = TvTokens.ContentStartX)) {
-                Column(
-                    Modifier.weight(1f).fillMaxHeight().padding(end = TvTokens.OverscanHorizontal),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
-                ) {
-                    PlayerColumn(
-                        playback = playback,
-                        lyrics = lyrics,
-                        liked = liked,
-                        onToggle = onToggle,
-                        onNext = onNext,
-                        onPrevious = onPrevious,
-                        onSeek = onSeek,
-                        onShuffle = onShuffle,
-                        onRepeat = onRepeat,
-                        onToggleLike = onToggleLike,
-                        onContentFocus = onContentFocus,
-                        onOpenLyrics = { panel = PanelState.Lyrics },
-                        hasVideo = hasVideo,
-                        onOpenMusicVideo = onOpenMusicVideo,
-                        onOpenListeningParty = onOpenListeningParty,
-                        onTrackActions = onTrackActions,
-                        playFocus = playFocus,
-                    )
-                }
-                // The panel's glass reaches the edge; its content stays inside the safe area.
-                Column(
-                    Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .background(Color(0xFF0F1011).copy(alpha = 0.55f))
-                        .padding(
-                            end = TvTokens.OverscanHorizontal,
-                            top = TvTokens.OverscanVertical,
-                            bottom = TvTokens.OverscanVertical,
-                        ),
-                ) {
-                    TvPanelTabs(
-                        active = panel,
-                        queueCount = playback.queue.size,
-                        onSelect = { panel = it },
-                        onContentFocus = onContentFocus,
-                    )
-                    when (panel) {
-                        PanelState.Lyrics -> TvLyricsPanel(lyrics, onSeek, onContentFocus, Modifier.weight(1f))
-                        PanelState.Queue -> TvQueuePanel(playback, onPlayQueueIndex, onContentFocus, Modifier.weight(1f))
-                        PanelState.Hidden -> Unit
-                    }
-                }
-            }
+        if (track == null) {
+            Text("Nada en reproducción", style = TvTokens.tvBody, modifier = Modifier.align(Alignment.Center))
+            return@Box
         }
+        if (panel == TvPlayerPanel.Hidden) {
+            HiddenLayout(playback, track, lyrics, liked, synced, actions, playFocus, onSeek, onPanelChange)
+        } else {
+            PanelLayout(playback, track, lyrics, liked, panel, actions, playFocus, onSeek, onPlayQueueIndex, onPanelChange)
+        }
+        if (nightMode) {
+            Text(
+                "Modo nocturno · Atrás para salir",
+                style = TvTokens.tvMeta.copy(color = Color.White.copy(alpha = 0.8f)),
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(end = TvTokens.OverscanHorizontal, top = TvTokens.OverscanVertical)
+                    .clip(RoundedCornerShape(50))
+                    .background(Color.Black.copy(alpha = 0.45f))
+                    .padding(horizontal = 10.dp, vertical = 4.dp),
+            )
+        }
+    }
+
+    if (menuOpen) {
+        TvPlayerMenu(
+            hasVideo = hasVideo,
+            onDismiss = { menuOpen = false },
+            onNightMode = { menuOpen = false; onNightModeChange(true) },
+            onOpenMusicVideo = { menuOpen = false; onOpenMusicVideo() },
+            onOpenListeningParty = { menuOpen = false; onOpenListeningParty() },
+            onTrackActions = { menuOpen = false; track?.let(onTrackActions) },
+        )
     }
 }
 
+/** 1A/1B: player column on the left, glass panel with lyrics or queue on the right. */
 @Composable
-private fun PlayerColumn(
+private fun PanelLayout(
     playback: PlaybackSnapshot,
+    track: Track,
     lyrics: LoadState<List<LyricLine>>,
     liked: Boolean,
-    onToggle: () -> Unit,
-    onNext: () -> Unit,
-    onPrevious: () -> Unit,
-    onSeek: (Long) -> Unit,
-    onShuffle: () -> Unit,
-    onRepeat: () -> Unit,
-    onToggleLike: () -> Unit,
-    onContentFocus: () -> Unit,
-    onOpenLyrics: () -> Unit,
-    hasVideo: Boolean,
-    onOpenMusicVideo: () -> Unit,
-    onOpenListeningParty: () -> Unit,
-    onTrackActions: (Track) -> Unit,
+    panel: TvPlayerPanel,
+    actions: TvTransportActions,
     playFocus: FocusRequester,
-) {
-    val track = playback.currentTrack
-    if (track != null) {
-        ArtworkTile(track.artworkUrl, "Portada de ${track.title}", Modifier.size(230.dp), TvTokens.HeroArtworkRadius.value.toInt())
-        Spacer(Modifier.height(18.dp))
-        Text(
-            "REPRODUCIENDO DESDE · ${playback.contextTitle.ifBlank { "Cola" }}",
-            style = TvTokens.tvEyebrow,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Spacer(Modifier.height(6.dp))
-        Text(track.title, style = TvTokens.tvTitleNowPlaying, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        Text(track.artist.ifBlank { "Artista desconocido" }, style = TvTokens.tvBody.copy(color = CanopyColors.Muted), maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Spacer(Modifier.height(10.dp))
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            LikeButton(liked, onToggleLike, onContentFocus)
-            LosslessBadge(showBitrate = true, bitrateKbps = track.localBitrateKbps, isQobuz = track.isQobuz)
-        }
-        Spacer(Modifier.height(14.dp))
-        TvProgressBar(playback, onSeek, onContentFocus, Modifier.fillMaxWidth())
-        Spacer(Modifier.height(14.dp))
-        TvTransport(
-            isPlaying = playback.isPlaying,
-            shuffle = playback.shuffle,
-            repeatMode = playback.repeatMode,
-            onToggle = onToggle,
-            onNext = onNext,
-            onPrevious = onPrevious,
-            onShuffle = onShuffle,
-            onRepeat = onRepeat,
-            onContentFocus = onContentFocus,
-            playFocus = playFocus,
-        )
-        Spacer(Modifier.height(14.dp))
-        SecondaryActions(
-            hasVideo = hasVideo,
-            onOpenMusicVideo = onOpenMusicVideo,
-            onOpenListeningParty = onOpenListeningParty,
-            onTrackActions = { onTrackActions(track) },
-            onContentFocus = onContentFocus,
-        )
-        LyricPeek(lyrics, onOpenLyrics, Modifier.padding(top = 12.dp))
-    } else {
-        Text("Nada en reproducción", style = TvTokens.tvBody.copy(color = CanopyColors.Muted))
-    }
-}
-
-@Composable
-private fun LikeButton(liked: Boolean, onToggleLike: () -> Unit, onContentFocus: () -> Unit) {
-    Box(
-        Modifier
-            .tvClickable(TvFocusStyle.Button, LikeShape, onFocus = onContentFocus, onClick = onToggleLike)
-            .clip(LikeShape)
-            .background(CanopyColors.Glass.copy(alpha = 0.12f))
-            .padding(10.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            if (liked) Icons.Filled.Favorite else Icons.Rounded.FavoriteBorder,
-            contentDescription = if (liked) "Quitar de me gusta" else "Me gusta",
-            tint = if (liked) CanopyColors.Favorite else CanopyColors.Text,
-            modifier = Modifier.size(20.dp),
-        )
-    }
-}
-
-@Composable
-private fun TvProgressBar(
-    playback: PlaybackSnapshot,
     onSeek: (Long) -> Unit,
-    onContentFocus: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    // The snapshot carries no position; the clock is the only source of playback time.
-    val clock = LocalPlayerClock.current
-    val head by remember(clock) { derivedStateOf { clock.reported() } }
-    val durationMs = playback.durationMs
-    val fraction = (head.positionMs.toFloat() / durationMs.coerceAtLeast(1)).coerceIn(0f, 1f)
-    val accent = LocalAccent.current
-    Box(
-        modifier
-            .fillMaxWidth()
-            .height(28.dp)
-            .onPreviewKeyEvent { event ->
-                if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                when (event.key) {
-                    Key.DirectionLeft -> { onSeek((head.positionMs - 10_000).coerceAtLeast(0)); true }
-                    Key.DirectionRight -> { onSeek((head.positionMs + 10_000).coerceAtMost(durationMs)); true }
-                    else -> false
-                }
-            }
-            .tvFocusable(TvFocusStyle.Row, ProgressShape, onFocus = onContentFocus),
-        contentAlignment = Alignment.CenterStart,
-    ) {
-        Box(Modifier.fillMaxWidth().height(4.dp).clip(ProgressShape).background(Color.White.copy(alpha = 0.2f)))
-        Box(
-            Modifier
-                .fillMaxWidth(fraction)
-                .height(4.dp)
-                .clip(ProgressShape)
-                .background(accent),
-        )
-        Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(formatTime(head.positionMs), style = TvTokens.tvMeta)
-            Text(formatTime(durationMs), style = TvTokens.tvMeta)
-        }
-    }
-}
-
-@Composable
-private fun TvTransport(
-    isPlaying: Boolean,
-    shuffle: Boolean,
-    repeatMode: RepeatMode,
-    onToggle: () -> Unit,
-    onNext: () -> Unit,
-    onPrevious: () -> Unit,
-    onShuffle: () -> Unit,
-    onRepeat: () -> Unit,
-    onContentFocus: () -> Unit,
-    playFocus: FocusRequester,
-) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-        TransportIcon(Icons.Rounded.Shuffle, if (shuffle) "Desactivar aleatorio" else "Aleatorio", active = shuffle, onClick = onShuffle, onContentFocus = onContentFocus)
-        TransportIcon(Icons.Rounded.SkipPrevious, "Anterior", active = false, onClick = onPrevious, onContentFocus = onContentFocus)
-        // Play/Pause is the transport hero: white circle with an accent ring when focused.
-        Box(
-            Modifier
-                .size(60.dp)
-                .focusRequester(playFocus)
-                .tvClickable(TvFocusStyle.Transport, CircleShape, onFocus = onContentFocus, onClick = onToggle)
-                .clip(CircleShape)
-                .background(Color.White),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                contentDescription = if (isPlaying) "Pausa" else "Reproducir",
-                tint = Color(0xFF111214),
-                modifier = Modifier.size(32.dp),
-            )
-        }
-        TransportIcon(Icons.Rounded.SkipNext, "Siguiente", active = false, onClick = onNext, onContentFocus = onContentFocus)
-        TransportIcon(
-            if (repeatMode == RepeatMode.ONE) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat,
-            if (repeatMode == RepeatMode.OFF) "Repetir todo" else "Repetir",
-            active = repeatMode != RepeatMode.OFF,
-            onClick = onRepeat,
-            onContentFocus = onContentFocus,
-        )
-    }
-}
-
-@Composable
-private fun TransportIcon(
-    icon: ImageVector,
-    description: String,
-    active: Boolean,
-    onClick: () -> Unit,
-    onContentFocus: () -> Unit,
-) {
-    val accent = LocalAccent.current
-    Box(
-        Modifier
-            .size(44.dp)
-            .tvClickable(TvFocusStyle.Button, CircleShape, onFocus = onContentFocus, onClick = onClick)
-            .clip(CircleShape)
-            .background(CanopyColors.Glass.copy(alpha = 0.12f)),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            icon,
-            description,
-            tint = if (active) accent else CanopyColors.Text.copy(alpha = 0.75f),
-            modifier = Modifier.size(24.dp),
-        )
-    }
-}
-
-@Composable
-private fun SecondaryActions(
-    hasVideo: Boolean,
-    onOpenMusicVideo: () -> Unit,
-    onOpenListeningParty: () -> Unit,
-    onTrackActions: () -> Unit,
-    onContentFocus: () -> Unit,
-) {
-    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-        if (hasVideo) {
-            SecondaryAction(Icons.Rounded.MusicNote, "Video", onContentFocus, onOpenMusicVideo)
-        }
-        SecondaryAction(Icons.Rounded.Groups, "Listening Party", onContentFocus, onOpenListeningParty)
-        SecondaryAction(Icons.Rounded.MoreVert, "Más opciones", onContentFocus, onTrackActions)
-    }
-}
-
-@Composable
-private fun SecondaryAction(
-    icon: ImageVector,
-    label: String,
-    onContentFocus: () -> Unit,
-    onClick: () -> Unit,
+    onPlayQueueIndex: (Int) -> Unit,
+    onPanelChange: (TvPlayerPanel) -> Unit,
 ) {
     Row(
         Modifier
-            .tvClickable(TvFocusStyle.Button, SecondaryShape, onFocus = onContentFocus, onClick = onClick)
-            .clip(SecondaryShape)
-            .background(CanopyColors.Glass.copy(alpha = 0.12f))
-            .padding(horizontal = 14.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .fillMaxSize()
+            .padding(horizontal = TvTokens.OverscanHorizontal, vertical = TvTokens.OverscanVertical),
+        horizontalArrangement = Arrangement.spacedBy(32.dp),
     ) {
-        Icon(icon, null, tint = CanopyColors.Text.copy(alpha = 0.8f), modifier = Modifier.size(18.dp))
-        Spacer(Modifier.width(8.dp))
-        Text(label, style = TvTokens.tvBody.copy(color = CanopyColors.Text), maxLines = 1)
+        Column(Modifier.weight(1f).fillMaxHeight()) {
+            Eyebrow(playback)
+            Spacer(Modifier.height(15.dp))
+            Row(verticalAlignment = Alignment.Bottom) {
+                FloatingCover(track, 220)
+                Spacer(Modifier.width(20.dp))
+                LosslessBadge(showBitrate = true, bitrateKbps = track.localBitrateKbps, isQobuz = track.isQobuz)
+            }
+            Spacer(Modifier.height(20.dp))
+            Text(track.title, style = TvTokens.tvTitleNowPlaying, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(
+                track.artist.ifBlank { "Artista desconocido" },
+                style = TvTokens.tvBody.copy(fontSize = 16.sp, color = Color.White.copy(alpha = 0.86f)),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.weight(1f))
+            TvProgressBar(playback, onSeek, actions.onContentFocus)
+            Spacer(Modifier.height(11.dp))
+            TvTransportRow(playback, liked, actions, TvTransportLayout.Wide, playFocus)
+        }
+        Column(
+            Modifier
+                .width(404.dp)
+                .fillMaxHeight()
+                .clip(PanelShape)
+                .background(TvTokens.GlassPanel)
+                .border(1.dp, TvTokens.GlassBorder, PanelShape)
+                .padding(horizontal = 18.dp, vertical = 14.dp),
+        ) {
+            TvPanelTabs(
+                active = panel,
+                queueCount = playback.upcoming.size,
+                onSelect = onPanelChange,
+                onContentFocus = actions.onContentFocus,
+            )
+            when (panel) {
+                TvPlayerPanel.Lyrics -> TvLyricsPanel(lyrics, onSeek, actions.onContentFocus, Modifier.weight(1f))
+                TvPlayerPanel.Queue -> TvQueuePanel(playback, onPlayQueueIndex, actions.onContentFocus, Modifier.weight(1f))
+                TvPlayerPanel.Hidden -> Unit
+            }
+            if (panel == TvPlayerPanel.Lyrics) {
+                Row(horizontalArrangement = Arrangement.spacedBy(14.dp), modifier = Modifier.padding(top = 8.dp)) {
+                    TvKeyHint("◀", "Controles")
+                    TvKeyHint("OK", "Ir a esta línea")
+                }
+            }
+        }
+    }
+}
+
+/** 1C: big cover and info side by side; Lyrics and Queue as icon buttons on the right edge. */
+@Composable
+private fun HiddenLayout(
+    playback: PlaybackSnapshot,
+    track: Track,
+    lyrics: LoadState<List<LyricLine>>,
+    liked: Boolean,
+    synced: Boolean,
+    actions: TvTransportActions,
+    playFocus: FocusRequester,
+    onSeek: (Long) -> Unit,
+    onPanelChange: (TvPlayerPanel) -> Unit,
+) {
+    Box(Modifier.fillMaxSize()) {
+        Box(Modifier.padding(start = TvTokens.OverscanHorizontal, top = TvTokens.OverscanVertical)) { Eyebrow(playback) }
+        Row(
+            Modifier.align(Alignment.CenterStart).padding(start = 84.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            FloatingCover(track, 320)
+            Spacer(Modifier.width(48.dp))
+            Column(Modifier.width(350.dp).height(320.dp)) {
+                LosslessBadge(showBitrate = true, bitrateKbps = track.localBitrateKbps, isQobuz = track.isQobuz)
+                Spacer(Modifier.height(11.dp))
+                Text(track.title, style = TvTokens.tvTitleNowPlaying.copy(fontSize = 46.sp, lineHeight = 50.sp), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(track.artist, style = TvTokens.tvBody.copy(fontSize = 19.sp, color = Color.White.copy(alpha = 0.88f)), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                LyricPeek(lyrics, onOpen = { onPanelChange(TvPlayerPanel.Lyrics) }, modifier = Modifier.padding(top = 12.dp))
+                Spacer(Modifier.weight(1f))
+                TvProgressBar(playback, onSeek, actions.onContentFocus)
+                Spacer(Modifier.height(10.dp))
+                TvTransportRow(playback, liked, actions, TvTransportLayout.Compact, playFocus)
+            }
+        }
+        Column(
+            Modifier.align(Alignment.CenterEnd).padding(end = TvTokens.OverscanHorizontal),
+            horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.spacedBy(11.dp),
+        ) {
+            if (synced) {
+                TvEdgeIconButton(Icons.Rounded.Mic, "Letras", null, actions.onContentFocus) { onPanelChange(TvPlayerPanel.Lyrics) }
+            }
+            TvEdgeIconButton(Icons.AutoMirrored.Rounded.QueueMusic, "Cola", playback.upcoming.size, actions.onContentFocus) {
+                onPanelChange(TvPlayerPanel.Queue)
+            }
+        }
     }
 }
 
 @Composable
-private fun EdgeTabs(queueCount: Int, onSelect: (PanelState) -> Unit, modifier: Modifier = Modifier) {
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        EdgeTab("‹ Letras") { onSelect(PanelState.Lyrics) }
-        EdgeTab("Cola · $queueCount") { onSelect(PanelState.Queue) }
-    }
+private fun Eyebrow(playback: PlaybackSnapshot) {
+    Text(
+        "REPRODUCIENDO DESDE · ${playback.contextTitle.ifBlank { "Cola" }}",
+        style = TvTokens.tvEyebrow.copy(color = Color.White.copy(alpha = 0.86f)),
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+    )
 }
 
+/** Cover with a soft shadow tinted by its own colours, so it "floats" over the backdrop. */
 @Composable
-private fun EdgeTab(label: String, onClick: () -> Unit) {
-    Box(
+private fun FloatingCover(track: Track, sizeDp: Int) {
+    val palette = rememberArtworkPalette(track.artworkUrl)
+    val shape = RoundedCornerShape(TvTokens.HeroArtworkRadius)
+    ArtworkTile(
+        track.artworkUrl,
+        "Portada de ${track.title}",
         Modifier
-            .tvClickable(TvFocusStyle.Button, RoundedCornerShape(10.dp), onClick = onClick)
-            .clip(RoundedCornerShape(10.dp))
-            .background(CanopyColors.GlassChrome.copy(alpha = 0.82f))
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(label, style = TvTokens.tvMeta.copy(color = CanopyColors.Text))
-    }
-}
-
-private fun formatTime(ms: Long): String {
-    val total = ms.coerceAtLeast(0) / 1_000
-    return "${total / 60}:${(total % 60).toString().padStart(2, '0')}"
+            .size(sizeDp.dp)
+            .shadow(36.dp, shape, ambientColor = palette.accent, spotColor = palette.accent),
+        TvTokens.HeroArtworkRadius.value.toInt(),
+    )
 }
