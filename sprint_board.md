@@ -15,12 +15,7 @@
 ---
 
 ## 🏗️ In Progress
-- [ ] **HU-ORCH-11b: Paridad Funcional Total de Android TV con Móvil (Cuentas, Ajustes, Onboarding, Video y Social)** `[Responsables: DeepSeek Dev & Claude PM/QA]`
-  - [Responsable: DeepSeek Dev] Conexión de `SettingsScreen` completa a `TvRoutes.SETTINGS` con navegación D-pad.
-  - [Responsable: DeepSeek Dev] Habilitación de flujo de inicio / onboarding (`WelcomeScreen`) y rutas de autenticación (`Routes.LOGIN`, `Routes.SPOTIFY_LOGIN`, `Routes.QOBUZ_LOGIN`, `Routes.ACCOUNT_SWITCH`).
-  - [Responsable: DeepSeek Dev] Integración de Video Musical (`MusicVideoScreen`), ecualizador, descargas y salas de Listening Party adaptadas para control remoto.
-  - [Responsable: DeepSeek Dev] Menús contextuales de pistas/colecciones (`TrackActionsPopup`) operables con botón largo OK en TV.
-  - [Responsable: Claude PM/QA] Auditoría de navegación D-pad en emulador/dispositivo y suite de tests unitarios e integrados.
+_(vacío)_
 
 ---
 
@@ -30,6 +25,12 @@ _(vacío)_
 ---
 
 ## ✅ Done
+- [x] **HU-ORCH-11b: Paridad Funcional Total de Android TV con Móvil (Cuentas, Ajustes, Onboarding, Video y Social)** `[Responsables: DeepSeek Dev, Claude PM/QA & Antigravity PO]`
+  - Conexión de `SettingsScreen` real (todas las secciones: cuentas, calidad de streaming, autoplay, crossfade, caché, descargas, actualizaciones y diseño de inicio).
+  - Onboarding `WelcomeScreen` en primer arranque para TV y rutas de autenticación nativas (`NativeLoginScreen` para YouTube Music, `SpotifyLoginScreen`, `QobuzLoginScreen`, selector de cuenta).
+  - Video musical en TV (`TvMusicVideoScreen`) a pantalla completa y salas de Listening Party en TV (`TvListeningPartyScreen`) con teclado en pantalla.
+  - Menús contextuales de pista (`TvTrackActionsPopup` y `tvLongClickable`) por pulsación prolongada en Inicio, Reproductor, Detalle y Biblioteca.
+  - Envoltura `TvSafeContent` para zona segura de TV (TV-INV-2) y estados vacíos con botones enfocables. Compilación y publicación en release oficial `v1.0.0-canary.9-audited.22`.
 - [x] **HU-ORCH-11: Soporte y Compilación para Android TV (D-Pad & Leanback)** `[Responsables: DeepSeek Dev & Claude PM/QA]`
   - Implementación completa de la interfaz Opción A "Glass Rail" para Android TV: `TvDetection.kt`, tokens y tipografía TV en `TvTokens.kt`, sistema de foco unificado `Modifier.tvFocus` con 6 estilos (`Card`, `Button`, `Row`, `Key`, `NavItem`, `Transport`) con elevación de zIndex y escala sin alterar layout.
   - Rail lateral expandible `TvNavigationRail.kt`, Scaffold y NavHost `TvOrchardApp.kt`, pantalla de Inicio (`TvHomeScreen.kt`), Reproductor con paneles dinámicos (`TvNowPlaying.kt`, `TvLyricsPanel.kt`, `TvQueuePanel.kt`, `TvPanelTabs.kt`), Detalle de colección (`TvCollectionScreen.kt`), Búsqueda con teclado D-pad en pantalla (`TvSearchScreen.kt`) y Biblioteca (`TvLibraryScreen.kt`).
