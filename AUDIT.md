@@ -446,3 +446,40 @@ Sin tests: `CastDiscovery` (depende de `NsdManager`), `CastV2Player` y `CastCont
 | `AUDIT.md` con informe QA y C1 cerrado; `UPSTREAM.md` con zonas activas | ✅ |
 
 **Bloqueantes para llevar `integrate/hu-orch-12` a `audited`:** `testDebugUnitTest`, `:app:dependencies --configuration releaseRuntimeClasspath` y `assembleRelease` en verde en Actions, y la prueba manual de §6 registrada por el propietario. Pendiente aparte: decisión del propietario sobre el titular del copyright de los archivos nuevos (hoy `SFG545`).
+
+### 5.11 Android TV "Glass Rail" (HU-ORCH-11, 2026-10-18)
+
+- **Base:** `f89664f` más cambios sin commit en `integrate/hu-orch-11`: código TV de DeepSeek en `ui/tv/`, integración de Claude (`TvRoutes.kt`, `TvOrchardApp.kt`, bifurcación en `OrchardApp`, manifest leanback, `-PorchardTvBuild`, T14, Q1) y correcciones de QA. Contrato: `SDD-android-tv.md`. Método: revisión estática línea a línea y `grep`. Esta máquina no tiene Android SDK ni `kotlinc`: **no se compiló ni se ejecutó ningún test**.
+
+#### 5.11.1 Defectos del código TV corregidos en QA (sin commit)
+
+| # | Archivo | Defecto y efecto | Corrección |
+| --- | --- | --- | --- |
+| Q-1 | `focus/TvFocus.kt` y pantallas | `tvClickable` creaba dos nodos de foco (`clickable` + `focusable`), y `clip`/`background` antes del foco recortaban escala, borde y glow: doble pulsación y foco invisible (TV-INV-3) | `tvFocus` solo dibuja y precede a un único `clickable`/`focusable`; llamadas reordenadas; `onFocus` solo al ganar foco |
+| Q-2 | `home/TvHomeScreen.kt` | `requestFocus()` sobre un `FocusRequester` sin adjuntar: crash al abrir Inicio | Adjunto a "Reproducir" del hero |
+| Q-3 | `home/TvHomeScreen.kt` | `openItem(hero.item, onPlay, onPlayItem)` con tipos incompatibles (no compila); "Aleatorio" reproducía en orden | `onPlayItem(item, shuffle)` |
+| Q-4 | 5 archivos | `androidx.compose.foundation.focusRestorer` no existe (no compila) | `androidx.compose.ui.focus.focusRestorer` |
+| Q-5 | `player/TvLyricsPanel.kt` | `key = line.text`: crash con versos repetidos | Key por índice |
+| Q-6 | `player/TvNowPlaying.kt` | Progreso y seek ±10 s leían `playback.positionMs`, que `playbackState` deja en 0; la barra no mostraba foco | `LocalPlayerClock` y `tvFocusable` |
+| Q-7 | `player/TvNowPlaying.kt` | "Me gusta" = la pista está en la cola (siempre verdadero) | `library.likedTracks` |
+| Q-8 | `player/TvNowPlaying.kt` | Panel Letras/Cola sin margen derecho (TV-INV-2) | Padding 48/27 dentro del panel |
+| Q-9 | `search/TvSearchScreen.kt` | El mejor resultado mostraba la URL de la portada como subtítulo | `catalogSubtitle` |
+| Q-10 | `library/TvLibraryScreen.kt` | "Recientes" abría el detalle con un id de pista | OK reproduce la pista |
+| Q-11 | Reproductor, Detalle, Biblioteca | Sin foco inicial (TV-INV-3) | Play/Pausa, "Reproducir" y filtro activo |
+| Q-12 | Inicio, Detalle, Reproductor | Fondos opacos tapaban el fondo ambiental | Fondos translúcidos |
+
+#### 5.11.2 Invariantes (`SDD-android-tv.md` §3)
+
+| Invariante | Resultado | Evidencia |
+| --- | --- | --- |
+| TV-INV-1 100 % D-pad | ⏳ parcial | Rail, Inicio, Buscar, Biblioteca, Detalle y Reproductor operables por foco. Ajustes es un placeholder enfocable; Login y Welcome no son alcanzables en TV (T11, D2); mantener OK, teclas multimedia globales y diálogos con foco en "No" pendientes (T10); sin smoke test (T12) |
+| TV-INV-2 Zona segura | ⚠️ | Contenido en x = 92 dp y márgenes solo desde `TvTokens`. Observación para el PO: el rail que pide la Spec (x = 0 a 68 dp, ítems desde x = 10 dp) contradice "48 dp de los bordes laterales" |
+| TV-INV-3 Foco | ✅ estático | Sin `onFocusChanged` ni `border` fuera de `ui/tv/focus/`; `focusRestorer` en estantes, listas y grilla. Pendiente (T10): restaurar el foco al volver de Detalle y placeholders enfocables mientras Inicio carga |
+| TV-INV-4 Sin telemetría ni hosts | ✅ estático | `ui/tv/` sin URLs, sockets, `gms`, Firebase ni analítica; voz solo con `RecognizerIntent` al pulsar y botón oculto si nada lo resuelve; `RECORD_AUDIO` sigue con `tools:node="remove"`. Falta `:app:dependencies` |
+| TV-INV-5 Gama baja | ⏳ | Kawarp con `renderScale = 0.5f` y `fullFrameRate = false`, apagado si `isLowRamDevice()`. APK TV con `armeabi-v7a` y `arm64-v8a`; CI falla si falta un `lib/<abi>/` y avisa si una librería está en una sola ABI. `vendor/litert` y `native/onnxruntime` solo traen `arm64-v8a`: en 32 bits la traducción de letras se desactiva sola (`TranslationNative.available`) y ORT usa la librería completa del AAR. Sin verificar (T0): `kopus` y Earmark en `armv7` |
+| TV-INV-6 APK en el pipeline | ✅ estático | Segundo `assembleRelease` con `-PorchardTvBuild=true`, mismo keystore (se borra con `if: always()` tras el segundo build), un artefacto con los dos APK; `publish` exige `Orchard-AndroidTV-arm.apk`, lo suma a `SHA256SUMS.txt` y a las notas. Sin acciones ni permisos nuevos. Job `android-tv-smoke` (§5.5) no implementado |
+| TV-INV-7 Teléfono intacto | ✅ estático | Sin la propiedad las ABI de release siguen en `['arm64-v8a']`; `OrchardApp` solo gana la bifurcación inicial. Diff dentro de §4.6 |
+| TV-INV-8 Actualizador | ⚠️ | APK por nombre exacto y 6 tests nuevos en `UpdateManagerTest`. Teléfono: `Orchard-Android-arm64-v8a.apk` o el primer APK que no sea el de TV (conserva el test existente). **H-TV1:** si el APK sale de la lista de assets (este pipeline no publica `latest-android.json`), `sha256` queda vacío y `downloadAndInstallUpdate` no verifica; afecta también al canal beta del teléfono. Propuesta: usar el `digest` `sha256:` que la API de GitHub da por asset. Toca zona INV-3: requiere aprobación del propietario |
+| TV-INV-9 Tamaño y cabeceras | ✅ | Máximo 396 líneas (`TvNowPlaying.kt`); SPDX AGPL-3.0-or-later en los 14 archivos de `ui/tv/` |
+
+**Bloqueantes para llevar `integrate/hu-orch-11` a `audited`:** `testDebugUnitTest`, los dos `assembleRelease` y `:app:dependencies` en verde en Actions; decisión del PO sobre la traducción ausente en 32 bits y verificación de `kopus`/Earmark en `armv7` (T0); T10, T11 (D2), T12, T13 y Q2; H-TV1; constancia de la excepción a SDD §3.2 (Q4).
