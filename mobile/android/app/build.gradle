@@ -28,7 +28,9 @@ def orchardNdkVersion = '28.2.13676358'
 def orchardMinSdk = 31
 // Production installs are ARM64. x86_64 remains available in debug builds for the Android
 // emulator, without making every distributed APK carry a second copy of each native library.
-def orchardReleaseAbis = ['arm64-v8a']
+// -PorchardTvBuild=true builds the Android TV APK, which also covers 32-bit ARM userspaces.
+def orchardTvBuild = (findProperty('orchardTvBuild') ?: 'false').toString().toBoolean()
+def orchardReleaseAbis = orchardTvBuild ? ['armeabi-v7a', 'arm64-v8a'] : ['arm64-v8a']
 def orchardDebugAbis = orchardReleaseAbis + ['x86_64']
 // Both toolchains build every ABI that any build type can package.
 def orchardAbis = orchardDebugAbis
@@ -39,7 +41,11 @@ def orchardAbis = orchardDebugAbis
 // runtime in the APK,
 // and `System.loadLibrary("orchard_earmark")` fails at the first transition, which is silent: the
 // engine reports itself unavailable and every mix comes out as the plain volume ramp.
-def orchardStlTriples = ['arm64-v8a': 'aarch64-linux-android', 'x86_64': 'x86_64-linux-android']
+def orchardStlTriples = [
+    'arm64-v8a': 'aarch64-linux-android',
+    'armeabi-v7a': 'arm-linux-androideabi',
+    'x86_64': 'x86_64-linux-android',
+]
 
 def orchardNdkDir = {
     def fromEnvironment = System.getenv('ANDROID_NDK_HOME') ?: System.getenv('ANDROID_NDK_ROOT')

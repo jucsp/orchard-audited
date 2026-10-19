@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Builds Linux (AppImage, rpm), Windows and the Android APK and publishes them
+# Builds Linux (AppImage, rpm), Windows and the Android phone and TV APKs and publishes them
 # only to the GitHub Releases of this fork. Nothing is sent to R2 or the upstream author's hosts.
 name: Build and release orchard-audited
 
@@ -329,7 +329,7 @@ jobs:
           key: orchard-windows-msvc-qt6112-v1-${{ github.run_id }}-${{ github.run_attempt }}
 
   android:
-    name: Android arm64-v8a APK
+    name: Android arm64-v8a and Android TV APKs
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
@@ -349,7 +349,7 @@ jobs:
           cache: gradle
       - name: Install Rust Android targets and cargo-ndk
         run: |
-          rustup toolchain install stable --profile minimal --target aarch64-linux-android,x86_64-linux-android
+          rustup toolchain install stable --profile minimal --target aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
           rustup default stable
           cargo install cargo-ndk --locked
       # cargo-ndk reads ANDROID_NDK_HOME, which on the runner points at its default NDK.
@@ -405,17 +405,42 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew --no-daemon assembleRelease
-      - name: Collect APK
+      - name: Collect phone APK
         run: |
           apk=mobile/android/app/build/outputs/apk/release/app-release.apk
           test -s "$apk"
           mkdir -p "$RUNNER_TEMP/orchard-android"
           cp "$apk" "$RUNNER_TEMP/orchard-android/Orchard-Android-arm64-v8a.apk"
-          rm -f "$ANDROID_KEYSTORE_FILE"
+      # Same sources, keystore and versionCode; only abiFilters change (SDD-android-tv §5.1).
+      - name: Build Android TV APK
+        working-directory: mobile/android
+        run: ./gradlew --no-daemon -PorchardTvBuild=true assembleRelease
+      - name: Collect Android TV APK
+        run: |
+          set -euo pipefail
+          apk=mobile/android/app/build/outputs/apk/release/app-release.apk
+          test -s "$apk"
+          cp "$apk" "$RUNNER_TEMP/orchard-android/Orchard-AndroidTV-arm.apk"
+          # TV-INV-5: both ARM ABIs are packaged; a library missing from one of them is reported.
+          libs="$(unzip -Z1 "$RUNNER_TEMP/orchard-android/Orchard-AndroidTV-arm.apk" 'lib/*' || true)"
+          for abi in armeabi-v7a arm64-v8a; do
+            grep -q "^lib/$abi/" <<< "$libs" || { echo "Android TV APK has no lib/$abi/" >&2; exit 1; }
+          done
+          missing="$(comm -3 \
+            <(sed -n 's|^lib/arm64-v8a/||p' <<< "$libs" | sort) \
+            <(sed -n 's|^lib/armeabi-v7a/||p' <<< "$libs" | sort) | tr -d '\t')"
+          if [ -n "$missing" ]; then
+            echo "::warning::Native libraries present in only one TV ABI: $(echo $missing)"
+          fi
+      - name: Remove release keystore
+        if: always()
+        run: rm -f "$ANDROID_KEYSTORE_FILE"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: orchard-android
-          path: ${{ runner.temp }}/orchard-android/Orchard-Android-arm64-v8a.apk
+          path: |
+            ${{ runner.temp }}/orchard-android/Orchard-Android-arm64-v8a.apk
+            ${{ runner.temp }}/orchard-android/Orchard-AndroidTV-arm.apk
           if-no-files-found: error
           retention-days: 14
 
@@ -460,7 +485,7 @@ jobs:
           test ${#rpms[@]} -eq 1
           for file in Orchard-Linux-x86_64.AppImage orchard-bootstrapper \
             Orchard-Windows-x86_64.7z orchard-bootstrapper.exe OrchardSetup.exe \
-            Orchard-Android-arm64-v8a.apk; do
+            Orchard-Android-arm64-v8a.apk Orchard-AndroidTV-arm.apk; do
             test -s "$file"
           done
           sha256sum -- * > SHA256SUMS.txt
@@ -491,6 +516,7 @@ jobs:
             echo "- Linux: ubuntu-24.04, Qt 6.12.0, $CLANG_VERSION + mold"
             echo "- Windows: windows-2025, Qt 6.11.2 msvc2022_64, NSIS"
             echo "- Android: arm64-v8a APK para instalación directa y Android Auto"
+            echo "- Android TV: armeabi-v7a + arm64-v8a APK para Android TV / Google TV"
             echo "- Unsigned: rpm (no GPG signature) and update manifests are not published by this build."
             echo
             echo '```'
