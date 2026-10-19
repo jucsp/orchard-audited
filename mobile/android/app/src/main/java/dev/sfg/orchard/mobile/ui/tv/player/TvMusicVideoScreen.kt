@@ -257,8 +257,3 @@ private fun VideoProgress(
         }
     }
 }
-
-private fun formatTime(ms: Long): String {
-    val total = ms.coerceAtLeast(0) / 1_000
-    return "${total / 60}:${(total % 60).toString().padStart(2, '0')}"
-}

@@ -13,6 +13,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.composable
+import dev.sfg.orchard.mobile.UpdateState
 import dev.sfg.orchard.mobile.app.OrchardViewModel
 import dev.sfg.orchard.mobile.settings.CacheManager
 import dev.sfg.orchard.mobile.ui.screens.SettingsScreen
@@ -74,7 +75,7 @@ fun NavGraphBuilder.tvSettingsRoutes(
             onConnectSpotify = { nav.navigate(TvRoutes.SPOTIFY_LOGIN) },
             onConnectQobuz = { nav.navigate(TvRoutes.SETTINGS_ADVANCED) },
             onCheckForUpdates = viewModel::checkForUpdates,
-            onInstallUpdate = viewModel::installUpdate,
+            onInstallUpdate = { (updateState as? UpdateState.Available)?.let { viewModel.installUpdate(it.metadata) } },
             onAdvanced = { nav.navigate(TvRoutes.SETTINGS_ADVANCED) },
         )
 
