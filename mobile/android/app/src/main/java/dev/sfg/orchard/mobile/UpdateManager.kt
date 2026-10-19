@@ -51,7 +51,8 @@ class UpdateManager(
 ) {
 
     private val baseUrl = "https://github.com/jucsp/orchard-audited/releases/latest/download"
-    private val jsonUrl = "$baseUrl/latest-android.json"
+    private val phoneManifestUrl = "$baseUrl/latest-android.json"
+    private val tvManifestUrl = "$baseUrl/latest-android-tv.json"
     private val githubReleasesUrl = "https://api.github.com/repos/jucsp/orchard-audited/releases"
 
     private val mutableState = MutableStateFlow<UpdateState>(UpdateState.Idle)
@@ -84,15 +85,25 @@ class UpdateManager(
         }
     }
 
-    private fun fetchStableUpdateMetadata(): MobileUpdateMetadata? = runCatching {
-        val connection = URL(jsonUrl).openConnection() as HttpURLConnection
+    private fun fetchStableUpdateMetadata(): MobileUpdateMetadata? {
+        // A TV reads the dedicated TV manifest first and falls back to the phone manifest when it
+        // has not been published yet. Either way the manifest still has to fit this device.
+        val urls = if (isTv) listOf(tvManifestUrl, phoneManifestUrl) else listOf(phoneManifestUrl)
+        for (url in urls) {
+            val metadata = fetchManifestAt(url)?.let(::parseUpdateMetadata)
+            if (metadata != null && manifestFitsDevice(metadata, isTv)) return metadata
+        }
+        return null
+    }
+
+    private fun fetchManifestAt(url: String): String? = runCatching {
+        val connection = URL(url).openConnection() as HttpURLConnection
         connection.requestMethod = "GET"
         connection.connectTimeout = 5000
         connection.readTimeout = 5000
 
         if (connection.responseCode == HttpURLConnection.HTTP_OK) {
-            val response = connection.inputStream.bufferedReader().use { it.readText() }
-            parseUpdateMetadata(response).takeIf { manifestFitsDevice(it, isTv) }
+            connection.inputStream.bufferedReader().use { it.readText() }
         } else {
             null
         }
@@ -124,6 +135,8 @@ class UpdateManager(
         private const val TAG = "UpdateManager"
         const val PHONE_APK = "Orchard-Android-arm64-v8a.apk"
         const val TV_APK = "Orchard-AndroidTV-arm.apk"
+        const val PHONE_MANIFEST = "latest-android.json"
+        const val TV_MANIFEST = "latest-android-tv.json"
 
         /** A manifest names one APK; a TV only takes it when that APK is the TV build. */
         fun manifestFitsDevice(metadata: MobileUpdateMetadata, isTv: Boolean): Boolean =
@@ -178,20 +191,23 @@ class UpdateManager(
                 if (tagName.isEmpty()) continue
 
                 val assets = releaseObj.optJSONArray("assets") ?: JSONArray()
-                var manifestUrl: String? = null
+                var phoneManifestUrl: String? = null
+                var tvManifestUrl: String? = null
                 val named = mutableListOf<Pair<String, String>>()
 
                 for (j in 0 until assets.length()) {
                     val asset = assets.getJSONObject(j)
                     val name = asset.optString("name", "")
                     val downloadUrl = asset.optString("browser_download_url", "")
-                    if (name.equals("latest-android.json", ignoreCase = true)) {
-                        manifestUrl = downloadUrl
-                    } else {
-                        named += name to downloadUrl
+                    when {
+                        name.equals(PHONE_MANIFEST, ignoreCase = true) -> phoneManifestUrl = downloadUrl
+                        name.equals(TV_MANIFEST, ignoreCase = true) -> tvManifestUrl = downloadUrl
+                        else -> named += name to downloadUrl
                     }
                 }
                 val apkUrl = selectApkUrl(named, isTv)
+                // A TV prefers the dedicated TV manifest and falls back to the phone manifest.
+                val manifestUrl = if (isTv) tvManifestUrl ?: phoneManifestUrl else phoneManifestUrl
 
                 if (manifestUrl != null) {
                     val manifestContent = fetchManifest(manifestUrl)

@@ -278,4 +278,75 @@ class UpdateManagerTest {
         org.junit.Assert.assertTrue(UpdateManager.manifestFitsDevice(phone, isTv = false))
         org.junit.Assert.assertTrue(UpdateManager.manifestFitsDevice(blank, isTv = false))
     }
+
+    private fun releaseWithManifestAssets(vararg assets: String): String {
+        val entries = assets.joinToString(",") { name ->
+            """{"name": "$name", "browser_download_url": "https://github.com/downloads/$name"}"""
+        }
+        return """[{"tag_name": "v2.1.0", "body": "", "published_at": "", "assets": [$entries]}]"""
+    }
+
+    @Test
+    fun parseGitHubReleasesPrefersTvManifestForTv() {
+        val phoneManifest = """{"version": "2.1.0-phone", "apkUrl": "https://github.com/downloads/${UpdateManager.PHONE_APK}", "sha256": "phonehash"}"""
+        val tvManifest = """{"version": "2.1.0-tv", "apkUrl": "https://github.com/downloads/${UpdateManager.TV_APK}", "sha256": "tvhash"}"""
+        val requested = mutableListOf<String>()
+
+        val metadata = UpdateManager.parseGitHubReleasesMetadata(
+            releasesJson = releaseWithManifestAssets("latest-android.json", "latest-android-tv.json"),
+            isTv = true,
+            fetchManifest = { url ->
+                requested += url
+                if (url.endsWith("latest-android-tv.json")) tvManifest else phoneManifest
+            },
+        )
+
+        assertEquals("2.1.0-tv", metadata?.version)
+        assertEquals("https://github.com/downloads/${UpdateManager.TV_APK}", metadata?.apkUrl)
+        assertEquals("tvhash", metadata?.sha256)
+        assertEquals(listOf("https://github.com/downloads/latest-android-tv.json"), requested)
+    }
+
+    @Test
+    fun parseGitHubReleasesUsesPhoneManifestForPhone() {
+        val phoneManifest = """{"version": "2.1.0-phone", "apkUrl": "https://github.com/downloads/${UpdateManager.PHONE_APK}", "sha256": "phonehash"}"""
+        val tvManifest = """{"version": "2.1.0-tv", "apkUrl": "https://github.com/downloads/${UpdateManager.TV_APK}", "sha256": "tvhash"}"""
+        val requested = mutableListOf<String>()
+
+        val metadata = UpdateManager.parseGitHubReleasesMetadata(
+            releasesJson = releaseWithManifestAssets("latest-android.json", "latest-android-tv.json"),
+            isTv = false,
+            fetchManifest = { url ->
+                requested += url
+                if (url.endsWith("latest-android-tv.json")) tvManifest else phoneManifest
+            },
+        )
+
+        assertEquals("2.1.0-phone", metadata?.version)
+        assertEquals("https://github.com/downloads/${UpdateManager.PHONE_APK}", metadata?.apkUrl)
+        assertEquals("phonehash", metadata?.sha256)
+        assertEquals(listOf("https://github.com/downloads/latest-android.json"), requested)
+    }
+
+    @Test
+    fun parseGitHubReleasesFallsBackToPhoneManifestForTv() {
+        // A TV release that only carries the phone manifest still reads it and
+        // keeps applying the device-fit check to whatever APK the manifest points at.
+        val phoneManifest = """{"version": "2.1.0", "apkUrl": "https://github.com/downloads/${UpdateManager.TV_APK}", "sha256": "tvhash"}"""
+        val requested = mutableListOf<String>()
+
+        val metadata = UpdateManager.parseGitHubReleasesMetadata(
+            releasesJson = releaseWithManifestAssets("latest-android.json"),
+            isTv = true,
+            fetchManifest = { url ->
+                requested += url
+                phoneManifest
+            },
+        )
+
+        assertEquals("2.1.0", metadata?.version)
+        assertEquals("https://github.com/downloads/${UpdateManager.TV_APK}", metadata?.apkUrl)
+        assertEquals("tvhash", metadata?.sha256)
+        assertEquals(listOf("https://github.com/downloads/latest-android.json"), requested)
+    }
 }

@@ -504,6 +504,24 @@ jobs:
             echo "name=v$ORCHARD_VERSION-audited.$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
             echo "kind=--prerelease" >> "$GITHUB_OUTPUT"
           fi
+      - name: Write Android update manifests
+        working-directory: dist
+        env:
+          TAG: ${{ steps.tag.outputs.name }}
+        run: |
+          set -euo pipefail
+          version_name="$(sed -n "s/.*versionName = '\([^']*\)'.*/\1/p" ../mobile/android/app/build.gradle)"
+          version_code="$(sed -n "s/^[[:space:]]*versionCode = \([0-9][0-9]*\).*/\1/p" ../mobile/android/app/build.gradle | head -n1)"
+          test -n "$version_name"
+          test -n "$version_code"
+          phone_sha="$(sha256sum Orchard-Android-arm64-v8a.apk | cut -d' ' -f1)"
+          tv_sha="$(sha256sum Orchard-AndroidTV-arm.apk | cut -d' ' -f1)"
+          base="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG"
+          printf '{\n  "version": "%s",\n  "versionCode": %s,\n  "apkUrl": "%s/Orchard-Android-arm64-v8a.apk",\n  "sha256": "%s"\n}\n' \
+            "$version_name" "$version_code" "$base" "$phone_sha" > latest-android.json
+          printf '{\n  "version": "%s",\n  "versionCode": %s,\n  "apkUrl": "%s/Orchard-AndroidTV-arm.apk",\n  "sha256": "%s"\n}\n' \
+            "$version_name" "$version_code" "$base" "$tv_sha" > latest-android-tv.json
+          cat latest-android.json latest-android-tv.json
       - name: Write release notes
         run: |
           base="$(sed -n 's/^- \*\*Base actual:\*\* \(.*\)$/\1/p' UPSTREAM.md)"
@@ -517,7 +535,8 @@ jobs:
             echo "- Windows: windows-2025, Qt 6.11.2 msvc2022_64, NSIS"
             echo "- Android: arm64-v8a APK para instalación directa y Android Auto"
             echo "- Android TV: armeabi-v7a + arm64-v8a APK para Android TV / Google TV"
-            echo "- Unsigned: rpm (no GPG signature) and update manifests are not published by this build."
+            echo "- Unsigned: rpm (no GPG signature)."
+            echo "- Update manifests: latest-android.json and latest-android-tv.json are generated from the real APK checksums."
             echo
             echo '```'
             cat dist/SHA256SUMS.txt
