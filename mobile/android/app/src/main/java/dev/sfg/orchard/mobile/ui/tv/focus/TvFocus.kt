@@ -7,8 +7,11 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.runtime.Composable
@@ -115,6 +118,29 @@ fun Modifier.tvClickable(
         .clickable(interactionSource = source, indication = null, enabled = enabled, onClick = onClick)
 }
 
+/** Focus treatment plus one clickable focus target with a long-press action (D-pad menu). */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun Modifier.tvLongClickable(
+    style: TvFocusStyle,
+    shape: Shape,
+    enabled: Boolean = true,
+    onFocus: (() -> Unit)? = null,
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
+): Modifier {
+    val source = remember { MutableInteractionSource() }
+    return this
+        .tvFocus(style, shape, onFocus = onFocus)
+        .combinedClickable(
+            interactionSource = source,
+            indication = null,
+            enabled = enabled,
+            onClick = onClick,
+            onLongClick = onLongClick,
+        )
+}
+
 /** Focus treatment plus a plain focus target, for nodes that handle their own keys. */
 @Composable
 fun Modifier.tvFocusable(
@@ -124,3 +150,11 @@ fun Modifier.tvFocusable(
 ): Modifier = this
     .tvFocus(style, shape, onFocus = onFocus)
     .focusable()
+
+/**
+ * Focus group that reports when D-pad focus enters any descendant. For embedded phone screens whose
+ * focus targets do not use [tvFocus], so they can still collapse the rail.
+ */
+fun Modifier.tvFocusWithin(onFocus: () -> Unit): Modifier = this
+    .onFocusChanged { if (it.hasFocus) onFocus() }
+    .focusGroup()

@@ -9,8 +9,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -21,13 +19,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavType
@@ -36,12 +31,15 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import dev.sfg.orchard.mobile.OrchardGraph
 import dev.sfg.orchard.mobile.app.OrchardViewModel
 import dev.sfg.orchard.mobile.app.openTopLevel
+import dev.sfg.orchard.mobile.auth.AuthState
 import dev.sfg.orchard.mobile.model.CatalogKind
 import dev.sfg.orchard.mobile.model.LibraryFilter
 import dev.sfg.orchard.mobile.model.LibrarySnapshot
 import dev.sfg.orchard.mobile.model.LoadState
+import dev.sfg.orchard.mobile.model.Track
 import dev.sfg.orchard.mobile.ui.components.ArtworkBackdrop
 import dev.sfg.orchard.mobile.ui.components.KawarpArtworkBackdrop
 import dev.sfg.orchard.mobile.ui.components.LocalPlayerClock
@@ -49,12 +47,18 @@ import dev.sfg.orchard.mobile.ui.components.UpdateDialog
 import dev.sfg.orchard.mobile.ui.components.WarningBanner
 import dev.sfg.orchard.mobile.ui.components.rememberArtworkPalette
 import dev.sfg.orchard.mobile.ui.components.rememberPlayerPresentation
+import dev.sfg.orchard.mobile.ui.screens.DownloadsScreen
+import dev.sfg.orchard.mobile.ui.screens.NativeLoginScreen
+import dev.sfg.orchard.mobile.ui.screens.QobuzLoginScreen
+import dev.sfg.orchard.mobile.ui.screens.SettingsHomeLayout
+import dev.sfg.orchard.mobile.ui.screens.SettingsScreen
+import dev.sfg.orchard.mobile.ui.screens.SpotifyLoginScreen
+import dev.sfg.orchard.mobile.ui.screens.WelcomeScreen
 import dev.sfg.orchard.mobile.ui.theme.CanopyColors
 import dev.sfg.orchard.mobile.ui.tv.detail.TvCollectionScreen
-import dev.sfg.orchard.mobile.ui.tv.focus.TvFocusStyle
-import dev.sfg.orchard.mobile.ui.tv.focus.tvFocusable
 import dev.sfg.orchard.mobile.ui.tv.home.TvHomeScreen
 import dev.sfg.orchard.mobile.ui.tv.library.TvLibraryScreen
+import dev.sfg.orchard.mobile.ui.tv.player.TvMusicVideoScreen
 import dev.sfg.orchard.mobile.ui.tv.player.TvNowPlaying
 import dev.sfg.orchard.mobile.ui.tv.rail.TvNavigationRail
 import dev.sfg.orchard.mobile.ui.tv.search.TvSearchScreen
@@ -75,14 +79,27 @@ fun TvOrchardApp(viewModel: OrchardViewModel) {
     val playbackClock = viewModel.playbackClock.collectAsStateWithLifecycle()
     val library by viewModel.library.collectAsStateWithLifecycle()
     val settings by viewModel.settings.collectAsStateWithLifecycle()
+    val auth by viewModel.auth.collectAsStateWithLifecycle()
     val warning by viewModel.warning.collectAsStateWithLifecycle()
     val updateState by viewModel.updateState.collectAsStateWithLifecycle()
+    val downloads by viewModel.downloads.collectAsStateWithLifecycle()
+    val downloadsList = remember(downloads) { downloads.values.toList() }
+    val totalBytesUsed by viewModel.totalBytesUsed.collectAsStateWithLifecycle()
+    val cacheSizeBytes by viewModel.cacheSizeBytes.collectAsStateWithLifecycle()
+    val isClearingCache by viewModel.isClearingCache.collectAsStateWithLifecycle()
+    val qobuzStatus by viewModel.qobuzStatus.collectAsStateWithLifecycle()
+    val discordStatus by viewModel.discordStatus.collectAsStateWithLifecycle()
+    val lastfmState by viewModel.lastfmState.collectAsStateWithLifecycle()
+    val listenBrainzState by viewModel.listenBrainzState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val signedIn = auth is AuthState.SignedIn
 
     val presentation = rememberPlayerPresentation(playback, playbackClock, null)
     val shownPlayback = presentation.playback
     val artworkUrl = shownPlayback.currentTrack?.artworkUrl.orEmpty()
 
     var railExpanded by remember { mutableStateOf(false) }
+    var actionTrack by remember { mutableStateOf<Track?>(null) }
     val focusManager = LocalFocusManager.current
     val collapseRail = { railExpanded = false }
     val openDetail: (String) -> Unit = { id ->
@@ -105,7 +122,7 @@ fun TvOrchardApp(viewModel: OrchardViewModel) {
 
             NavHost(
                 navController = nav,
-                startDestination = TvRoutes.HOME,
+                startDestination = if (settings.onboardingCompleted) TvRoutes.HOME else TvRoutes.WELCOME,
                 modifier = Modifier.fillMaxSize(),
             ) {
                 composable(TvRoutes.HOME) {
@@ -118,6 +135,10 @@ fun TvOrchardApp(viewModel: OrchardViewModel) {
                         onPlayCollection = { id, title -> viewModel.playCollection(id, title) },
                         onPlayItem = { item, shuffle -> viewModel.playItem(item, shuffle) },
                         onContentFocus = collapseRail,
+                        signedIn = signedIn,
+                        onSignIn = { nav.navigate(TvRoutes.LOGIN) },
+                        onGoToSettings = { nav.openTopLevel(TvRoutes.SETTINGS) },
+                        onTrackActions = { actionTrack = it },
                     )
                 }
                 composable(TvRoutes.SEARCH) {
@@ -148,13 +169,154 @@ fun TvOrchardApp(viewModel: OrchardViewModel) {
                         onOpenDetail = openDetail,
                         onPlay = { viewModel.play(it, "Biblioteca") },
                         onContentFocus = collapseRail,
+                        signedIn = signedIn,
+                        onSignIn = { nav.navigate(TvRoutes.LOGIN) },
+                        onGoToSettings = { nav.openTopLevel(TvRoutes.SETTINGS) },
+                        onTrackActions = { actionTrack = it },
+                        onOpenDownloads = { nav.navigate(TvRoutes.DOWNLOADS) },
                     )
                 }
+                composable(TvRoutes.WELCOME) {
+                    TvSafeContent(collapseRail) {
+                        WelcomeScreen(
+                            settings = settings,
+                            auth = auth,
+                            onUpdateSettings = viewModel::updateSettings,
+                            onSignIn = { nav.navigate(TvRoutes.LOGIN) },
+                            onSignOut = viewModel::signOut,
+                            onFinish = {
+                                viewModel.updateSettings(settings.copy(onboardingCompleted = true))
+                                nav.navigate(TvRoutes.HOME) {
+                                    popUpTo(TvRoutes.WELCOME) { inclusive = true }
+                                }
+                            },
+                        )
+                    }
+                }
+                composable(TvRoutes.LOGIN) {
+                    TvSafeContent(collapseRail) {
+                        NativeLoginScreen(
+                            auth = auth,
+                            onBegin = viewModel::beginSignIn,
+                            onSession = { cookie, visitorData, dataSyncId, accountIndex, avatarUrl ->
+                                viewModel.completeSignIn(cookie, visitorData, dataSyncId, accountIndex, pageAvatarUrl = avatarUrl)
+                            },
+                            onCancel = viewModel::cancelSignIn,
+                            onComplete = { nav.popBackStack(TvRoutes.LOGIN, inclusive = true) },
+                        )
+                    }
+                }
+                composable(TvRoutes.ACCOUNT_SWITCH) {
+                    TvSafeContent(collapseRail) {
+                        NativeLoginScreen(
+                            auth = auth,
+                            onBegin = viewModel::beginSignIn,
+                            onSession = { cookie, visitorData, dataSyncId, accountIndex, avatarUrl ->
+                                viewModel.completeSignIn(
+                                    cookie, visitorData, dataSyncId, accountIndex,
+                                    switchingAccount = true, pageAvatarUrl = avatarUrl,
+                                )
+                            },
+                            onCancel = viewModel::cancelSignIn,
+                            onComplete = { nav.popBackStack(TvRoutes.ACCOUNT_SWITCH, inclusive = true) },
+                            switchingAccount = true,
+                            initialSession = viewModel.youtubeSession(),
+                        )
+                    }
+                }
+                composable(TvRoutes.SPOTIFY_LOGIN) {
+                    TvSafeContent(collapseRail) {
+                        SpotifyLoginScreen(
+                            onSpdcCaptured = { spdc ->
+                                viewModel.updateSettings(settings.copy(spotifySpdc = spdc))
+                                nav.popBackStack()
+                            },
+                            onCancel = { nav.popBackStack() },
+                        )
+                    }
+                }
+                composable(TvRoutes.QOBUZ_LOGIN) {
+                    TvSafeContent(collapseRail) {
+                        val graph = OrchardGraph.from(context)
+                        QobuzLoginScreen(
+                            qobuz = graph.qobuzResolver,
+                            onSuccess = { token, userId ->
+                                viewModel.connectQobuz(token, userId)
+                                nav.popBackStack()
+                            },
+                            onCancel = { nav.popBackStack() },
+                        )
+                    }
+                }
+                composable(TvRoutes.DOWNLOADS) {
+                    TvSafeContent(collapseRail) {
+                        DownloadsScreen(
+                            downloads = downloadsList,
+                            totalBytesUsed = totalBytesUsed,
+                            onPlay = { viewModel.play(it, "Downloads") },
+                            onRemoveDownload = viewModel::removeDownload,
+                        )
+                    }
+                }
                 composable(TvRoutes.SETTINGS) {
-                    TvPendingScreen("Ajustes todavía no está disponible en TV", collapseRail)
+                    TvSafeContent(collapseRail) {
+                        SettingsScreen(
+                            settings = settings,
+                            auth = auth,
+                            discordStatus = discordStatus,
+                            lastfmState = lastfmState,
+                            listenBrainzState = listenBrainzState,
+                            updateState = updateState,
+                            cacheSizeBytes = cacheSizeBytes,
+                            isClearingCache = isClearingCache,
+                            onClearCache = {
+                                viewModel.clearCache { bytesCleared ->
+                                    val formatted = dev.sfg.orchard.mobile.settings.CacheManager.formatStorageSize(bytesCleared)
+                                    android.widget.Toast.makeText(context, "Cache cleared ($formatted freed)", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            downloadedBytes = totalBytesUsed,
+                            onDeleteAllDownloads = {
+                                viewModel.removeAllDownloads()
+                                android.widget.Toast.makeText(context, "Downloads deleted", android.widget.Toast.LENGTH_SHORT).show()
+                            },
+                            onRefreshCacheSize = viewModel::refreshCacheSize,
+                            onSettings = viewModel::updateSettings,
+                            onAutoplayEnabled = viewModel::setAutoplayEnabled,
+                            onSignIn = { nav.navigate(TvRoutes.LOGIN) },
+                            onSwitchAccount = { nav.navigate(TvRoutes.ACCOUNT_SWITCH) },
+                            onSignOut = viewModel::signOut,
+                            onConnectLastfm = { viewModel.connectLastfm(context) },
+                            onCompleteLastfm = viewModel::completeLastfmConnection,
+                            onDisconnectLastfm = viewModel::disconnectLastfm,
+                            onConnectListenBrainz = viewModel::connectListenBrainz,
+                            onDisconnectListenBrainz = viewModel::disconnectListenBrainz,
+                            onConnectSpotify = { nav.navigate(TvRoutes.SPOTIFY_LOGIN) },
+                            qobuzStatus = qobuzStatus,
+                            onConnectQobuz = { nav.navigate(TvRoutes.QOBUZ_LOGIN) },
+                            onDisconnectQobuz = viewModel::disconnectQobuz,
+                            onQobuzEnabledChange = viewModel::setQobuzEnabled,
+                            onQobuzQualityChange = viewModel::setQobuzQuality,
+                            onWelcome = { nav.navigate(TvRoutes.WELCOME) },
+                            onCheckForUpdates = viewModel::checkForUpdates,
+                            onInstallUpdate = viewModel::installUpdate,
+                            onHomeLayout = { nav.navigate(TvRoutes.SETTINGS_HOME_LAYOUT) },
+                        )
+                    }
+                }
+                composable(TvRoutes.SETTINGS_HOME_LAYOUT) {
+                    TvSafeContent(collapseRail) {
+                        SettingsHomeLayout(
+                            settings = settings,
+                            auth = auth,
+                            onSettings = viewModel::updateSettings,
+                            onBack = { nav.popBackStack() },
+                        )
+                    }
                 }
                 composable(TvRoutes.NOW_PLAYING) {
                     val lyrics by viewModel.lyrics.collectAsStateWithLifecycle()
+                    val musicVideo by viewModel.musicVideo.collectAsStateWithLifecycle()
                     val track = shownPlayback.currentTrack
                     TvNowPlaying(
                         playback = shownPlayback,
@@ -168,6 +330,38 @@ fun TvOrchardApp(viewModel: OrchardViewModel) {
                         onRepeat = viewModel::cycleRepeat,
                         onToggleLike = { track?.let(viewModel::toggleLiked) },
                         onPlayQueueIndex = viewModel::playQueueIndex,
+                        onContentFocus = collapseRail,
+                        hasVideo = musicVideo.available,
+                        onOpenMusicVideo = { nav.navigate(TvRoutes.MUSIC_VIDEO) { launchSingleTop = true } },
+                        onOpenListeningParty = { nav.navigate(TvRoutes.LISTENING_PARTY) { launchSingleTop = true } },
+                        onTrackActions = { actionTrack = it },
+                    )
+                }
+                composable(TvRoutes.MUSIC_VIDEO) {
+                    val musicVideo by viewModel.musicVideo.collectAsStateWithLifecycle()
+                    val videoPlayer by viewModel.videoPlayer.collectAsStateWithLifecycle()
+                    TvMusicVideoScreen(
+                        musicVideo = musicVideo,
+                        player = videoPlayer,
+                        track = shownPlayback.currentTrack,
+                        playback = shownPlayback,
+                        onToggle = viewModel::togglePlayback,
+                        onToggleMusicVideo = viewModel::toggleMusicVideo,
+                        onSeek = viewModel::seek,
+                        onNext = viewModel::next,
+                        onPrevious = viewModel::previous,
+                        onContentFocus = collapseRail,
+                        onExit = { nav.popBackStack() },
+                    )
+                }
+                composable(TvRoutes.LISTENING_PARTY) {
+                    val party by viewModel.listeningParty.collectAsStateWithLifecycle()
+                    TvListeningPartyScreen(
+                        party = party,
+                        onBack = { nav.popBackStack() },
+                        onCreate = { viewModel.createListeningParty() },
+                        onJoin = { code -> viewModel.joinListeningParty(code) },
+                        onLeave = { viewModel.leaveListeningParty() },
                         onContentFocus = collapseRail,
                     )
                 }
@@ -194,6 +388,7 @@ fun TvOrchardApp(viewModel: OrchardViewModel) {
                         },
                         onSave = { loaded?.let(viewModel::saveDetail) },
                         onContentFocus = collapseRail,
+                        onTrackActions = { actionTrack = it },
                     )
                 }
             }
@@ -228,6 +423,21 @@ fun TvOrchardApp(viewModel: OrchardViewModel) {
                 onInstall = viewModel::installUpdate,
                 onDismiss = viewModel::dismissUpdate,
             )
+
+            actionTrack?.let { track ->
+                TvTrackActionsHost(
+                    track = track,
+                    liked = library.likedTracks.any { it.id == track.id },
+                    playlists = viewModel.playlistChoices(track, library.savedPlaylists),
+                    onDismiss = { actionTrack = null },
+                    onPlay = { viewModel.play(it) },
+                    onPlayNext = viewModel::playNext,
+                    onAddToQueue = viewModel::addToQueue,
+                    onAddToPlaylist = { playlistId, item -> viewModel.addTrackToPlaylist(playlistId, item) },
+                    onToggleLike = viewModel::toggleLiked,
+                    onOpenDetail = openDetail,
+                )
+            }
         }
     }
 }
@@ -270,25 +480,3 @@ private fun TvBackdrop(artworkUrl: String, animate: Boolean) {
     }
 }
 
-/** Placeholder for destinations whose TV adaptation is pending; focusable so focus never vanishes. */
-@Composable
-private fun TvPendingScreen(message: String, onContentFocus: () -> Unit) {
-    val focus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { focus.requestFocus() }
-    val shape = RoundedCornerShape(TvTokens.ListRowRadius)
-    Box(
-        Modifier
-            .fillMaxSize()
-            .padding(start = TvTokens.ContentStartX, end = TvTokens.OverscanHorizontal),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            message,
-            style = TvTokens.tvBody.copy(color = CanopyColors.MutedStrong),
-            modifier = Modifier
-                .focusRequester(focus)
-                .tvFocusable(TvFocusStyle.Row, shape, onFocus = onContentFocus)
-                .padding(horizontal = 18.dp, vertical = 12.dp),
-        )
-    }
-}

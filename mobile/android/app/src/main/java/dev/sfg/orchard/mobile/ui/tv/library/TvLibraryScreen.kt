@@ -50,8 +50,10 @@ import dev.sfg.orchard.mobile.model.Track
 import dev.sfg.orchard.mobile.ui.components.ArtworkTile
 import dev.sfg.orchard.mobile.ui.theme.CanopyColors
 import dev.sfg.orchard.mobile.ui.theme.LocalAccent
+import dev.sfg.orchard.mobile.ui.tv.TvEmptyState
 import dev.sfg.orchard.mobile.ui.tv.focus.TvFocusStyle
 import dev.sfg.orchard.mobile.ui.tv.focus.tvClickable
+import dev.sfg.orchard.mobile.ui.tv.focus.tvLongClickable
 import dev.sfg.orchard.mobile.ui.tv.theme.TvTokens
 
 private val FilterShape = RoundedCornerShape(50)
@@ -75,10 +77,20 @@ fun TvLibraryScreen(
     onOpenDetail: (String) -> Unit,
     onPlay: (Track) -> Unit,
     onContentFocus: () -> Unit,
+    signedIn: Boolean,
+    onSignIn: () -> Unit,
+    onGoToSettings: () -> Unit,
+    onTrackActions: (Track) -> Unit = {},
+    onOpenDownloads: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val filterFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { filterFocus.requestFocus() }
+    val emptyForFilter = library.isEmptyFor(filter)
+    // Empty states and Downloads take initial focus on their own action.
+    val focusFilter = signedIn && !emptyForFilter && filter != LibraryFilter.DOWNLOADS
+    LaunchedEffect(focusFilter, filter) {
+        if (focusFilter) filterFocus.requestFocus()
+    }
     Column(
         modifier
             .fillMaxSize()
@@ -99,11 +111,54 @@ fun TvLibraryScreen(
         }
         Spacer(Modifier.height(18.dp))
 
-        when (filter) {
-            LibraryFilter.SONGS -> TvSongList(library.likedTracks, onPlay, onContentFocus)
-            else -> TvLibraryGrid(library, filter, onOpenDetail, onPlay, onContentFocus)
+        when {
+            !signedIn -> TvEmptyState(
+                title = "Inicia sesión",
+                message = "Conecta tu cuenta para ver tus playlists, artistas y canciones favoritas.",
+                onContentFocus = onContentFocus,
+                actionLabel = "Iniciar sesión",
+                onAction = onSignIn,
+            )
+
+            // Downloads live on their own route, which reuses the phone screen.
+            filter == LibraryFilter.DOWNLOADS -> TvEmptyState(
+                title = "Descargas",
+                message = "Tus canciones descargadas para escuchar sin conexión.",
+                onContentFocus = onContentFocus,
+                actionLabel = "Abrir descargas",
+                onAction = onOpenDownloads,
+            )
+
+            emptyForFilter -> TvEmptyState(
+                title = "Tu biblioteca está vacía",
+                message = emptyMessage(filter),
+                onContentFocus = onContentFocus,
+                actionLabel = "Ir a Ajustes",
+                onAction = onGoToSettings,
+            )
+
+            filter == LibraryFilter.SONGS -> TvSongList(library.likedTracks, onPlay, onTrackActions, onContentFocus)
+            else -> TvLibraryGrid(library, filter, onOpenDetail, onPlay, onTrackActions, onContentFocus)
         }
     }
+}
+
+private fun LibrarySnapshot.isEmptyFor(filter: LibraryFilter): Boolean = when (filter) {
+    LibraryFilter.PLAYLISTS -> savedPlaylists.isEmpty()
+    LibraryFilter.ARTISTS -> savedArtists.isEmpty()
+    LibraryFilter.ALBUMS -> savedAlbums.isEmpty()
+    LibraryFilter.SONGS -> likedTracks.isEmpty()
+    LibraryFilter.RECENT -> recentlyPlayed.isEmpty()
+    else -> false
+}
+
+private fun emptyMessage(filter: LibraryFilter): String = when (filter) {
+    LibraryFilter.PLAYLISTS -> "Todavía no has guardado ninguna playlist."
+    LibraryFilter.ARTISTS -> "Todavía no sigues a ningún artista."
+    LibraryFilter.ALBUMS -> "Todavía no has guardado ningún álbum."
+    LibraryFilter.SONGS -> "Marca canciones con 'Me gusta' para verlas aquí."
+    LibraryFilter.RECENT -> "Aún no has reproducido ninguna canción."
+    else -> "No hay elementos que mostrar aquí."
 }
 
 private fun LibraryFilter.label(): String = when (this) {
@@ -143,6 +198,7 @@ private fun TvLibraryGrid(
     filter: LibraryFilter,
     onOpenDetail: (String) -> Unit,
     onPlay: (Track) -> Unit,
+    onTrackActions: (Track) -> Unit,
     onContentFocus: () -> Unit,
 ) {
     LazyVerticalGrid(
@@ -185,10 +241,7 @@ private fun TvLibraryGrid(
             }
             // Recent entries are tracks, not collections: OK plays them.
             LibraryFilter.RECENT -> items(library.recentlyPlayed, key = { "re_${it.id}" }) { track ->
-                CollectionCard(track.title, track.artworkUrl, onContentFocus) { onPlay(track) }
-            }
-            LibraryFilter.DOWNLOADS -> item(key = "downloads_placeholder") {
-                Text("Tus descargas aparecen aquí", style = TvTokens.tvMeta, color = CanopyColors.Muted)
+                CollectionCard(track.title, track.artworkUrl, onContentFocus, onLongClick = { onTrackActions(track) }) { onPlay(track) }
             }
             else -> Unit
         }
@@ -201,13 +254,14 @@ private fun CollectionCard(
     artworkUrl: String,
     onContentFocus: () -> Unit,
     round: Boolean = false,
+    onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit,
 ) {
     val shape = if (round) CircleShape else CardShape
     Column(
         Modifier
             .width(123.dp)
-            .tvClickable(TvFocusStyle.Card, shape, onFocus = onContentFocus, onClick = onClick),
+            .tvLongClickable(TvFocusStyle.Card, shape, onFocus = onContentFocus, onClick = onClick, onLongClick = onLongClick),
     ) {
         if (round) {
             Box(Modifier.size(123.dp).clip(CircleShape).background(CanopyColors.Surface), contentAlignment = Alignment.Center) {
@@ -222,14 +276,25 @@ private fun CollectionCard(
 }
 
 @Composable
-private fun TvSongList(tracks: List<Track>, onPlay: (Track) -> Unit, onContentFocus: () -> Unit) {
+private fun TvSongList(
+    tracks: List<Track>,
+    onPlay: (Track) -> Unit,
+    onTrackActions: (Track) -> Unit,
+    onContentFocus: () -> Unit,
+) {
     LazyColumn(Modifier.fillMaxSize().focusRestorer()) {
         items(tracks, key = { "song_${it.id}" }) { track ->
             Row(
                 Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 6.dp, vertical = 2.dp)
-                    .tvClickable(TvFocusStyle.Row, RowShape, onFocus = onContentFocus) { onPlay(track) }
+                    .tvLongClickable(
+                        TvFocusStyle.Row,
+                        RowShape,
+                        onFocus = onContentFocus,
+                        onClick = { onPlay(track) },
+                        onLongClick = { onTrackActions(track) },
+                    )
                     .padding(horizontal = 10.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {

@@ -21,6 +21,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
+import androidx.compose.material.icons.rounded.Groups
+import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Repeat
@@ -75,6 +78,7 @@ enum class PanelState { Hidden, Lyrics, Queue }
 private val TransportShape = CircleShape
 private val ProgressShape = RoundedCornerShape(4.dp)
 private val LikeShape = CircleShape
+private val SecondaryShape = RoundedCornerShape(50)
 
 @Composable
 fun TvNowPlaying(
@@ -90,6 +94,10 @@ fun TvNowPlaying(
     onToggleLike: () -> Unit,
     onPlayQueueIndex: (Int) -> Unit,
     onContentFocus: () -> Unit,
+    hasVideo: Boolean,
+    onOpenMusicVideo: () -> Unit,
+    onOpenListeningParty: () -> Unit,
+    onTrackActions: (Track) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var panel by rememberSaveable { mutableStateOf(PanelState.Hidden) }
@@ -121,6 +129,10 @@ fun TvNowPlaying(
                     onToggleLike = onToggleLike,
                     onContentFocus = onContentFocus,
                     onOpenLyrics = { panel = PanelState.Lyrics },
+                    hasVideo = hasVideo,
+                    onOpenMusicVideo = onOpenMusicVideo,
+                    onOpenListeningParty = onOpenListeningParty,
+                    onTrackActions = onTrackActions,
                     playFocus = playFocus,
                 )
             }
@@ -149,6 +161,10 @@ fun TvNowPlaying(
                         onToggleLike = onToggleLike,
                         onContentFocus = onContentFocus,
                         onOpenLyrics = { panel = PanelState.Lyrics },
+                        hasVideo = hasVideo,
+                        onOpenMusicVideo = onOpenMusicVideo,
+                        onOpenListeningParty = onOpenListeningParty,
+                        onTrackActions = onTrackActions,
                         playFocus = playFocus,
                     )
                 }
@@ -195,6 +211,10 @@ private fun PlayerColumn(
     onToggleLike: () -> Unit,
     onContentFocus: () -> Unit,
     onOpenLyrics: () -> Unit,
+    hasVideo: Boolean,
+    onOpenMusicVideo: () -> Unit,
+    onOpenListeningParty: () -> Unit,
+    onTrackActions: (Track) -> Unit,
     playFocus: FocusRequester,
 ) {
     val track = playback.currentTrack
@@ -229,6 +249,14 @@ private fun PlayerColumn(
             onRepeat = onRepeat,
             onContentFocus = onContentFocus,
             playFocus = playFocus,
+        )
+        Spacer(Modifier.height(14.dp))
+        SecondaryActions(
+            hasVideo = hasVideo,
+            onOpenMusicVideo = onOpenMusicVideo,
+            onOpenListeningParty = onOpenListeningParty,
+            onTrackActions = { onTrackActions(track) },
+            onContentFocus = onContentFocus,
         )
         LyricPeek(lyrics, onOpenLyrics, Modifier.padding(top = 12.dp))
     } else {
@@ -365,6 +393,44 @@ private fun TransportIcon(
             tint = if (active) accent else CanopyColors.Text.copy(alpha = 0.75f),
             modifier = Modifier.size(24.dp),
         )
+    }
+}
+
+@Composable
+private fun SecondaryActions(
+    hasVideo: Boolean,
+    onOpenMusicVideo: () -> Unit,
+    onOpenListeningParty: () -> Unit,
+    onTrackActions: () -> Unit,
+    onContentFocus: () -> Unit,
+) {
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (hasVideo) {
+            SecondaryAction(Icons.Rounded.MusicNote, "Video", onContentFocus, onOpenMusicVideo)
+        }
+        SecondaryAction(Icons.Rounded.Groups, "Listening Party", onContentFocus, onOpenListeningParty)
+        SecondaryAction(Icons.Rounded.MoreVert, "Más opciones", onContentFocus, onTrackActions)
+    }
+}
+
+@Composable
+private fun SecondaryAction(
+    icon: ImageVector,
+    label: String,
+    onContentFocus: () -> Unit,
+    onClick: () -> Unit,
+) {
+    Row(
+        Modifier
+            .tvClickable(TvFocusStyle.Button, SecondaryShape, onFocus = onContentFocus, onClick = onClick)
+            .clip(SecondaryShape)
+            .background(CanopyColors.Glass.copy(alpha = 0.12f))
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, null, tint = CanopyColors.Text.copy(alpha = 0.8f), modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(label, style = TvTokens.tvBody.copy(color = CanopyColors.Text), maxLines = 1)
     }
 }
 

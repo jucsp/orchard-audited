@@ -47,8 +47,10 @@ import dev.sfg.orchard.mobile.ui.screens.catalogSubtitle
 import dev.sfg.orchard.mobile.ui.screens.discoverEntries
 import dev.sfg.orchard.mobile.ui.theme.CanopyColors
 import dev.sfg.orchard.mobile.ui.theme.LocalAccent
+import dev.sfg.orchard.mobile.ui.tv.TvEmptyState
 import dev.sfg.orchard.mobile.ui.tv.focus.TvFocusStyle
 import dev.sfg.orchard.mobile.ui.tv.focus.tvClickable
+import dev.sfg.orchard.mobile.ui.tv.focus.tvLongClickable
 import dev.sfg.orchard.mobile.ui.tv.theme.TvTokens
 
 private val CardWidth = 123.dp
@@ -64,10 +66,16 @@ fun TvHomeScreen(
     onPlayCollection: (String, String) -> Unit,
     onPlayItem: (CatalogItem, shuffle: Boolean) -> Unit,
     onContentFocus: () -> Unit,
+    signedIn: Boolean,
+    onSignIn: () -> Unit,
+    onGoToSettings: () -> Unit,
+    onTrackActions: (Track) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val entries = discoverEntries(state, library)
     val hero = entries.firstOrNull()
+    val sections = (state as? LoadState.Content)?.value.orEmpty()
+    val emptyLibrary = hero == null && sections.isEmpty() && state is LoadState.Content
 
     Box(
         modifier
@@ -85,33 +93,57 @@ fun TvHomeScreen(
             contentPadding = PaddingValues(top = TvTokens.OverscanVertical, bottom = TvTokens.OverscanVertical),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
-            if (hero != null) {
-                item(key = "hero") {
-                    TvHero(
-                        item = hero.item,
-                        caption = hero.caption,
-                        onPlay = { onPlayItem(hero.item, false) },
-                        onShuffle = { onPlayItem(hero.item, true) },
-                        onOpenDetail = { onOpenDetail(hero.item.stableId) },
+            when {
+                !signedIn -> item(key = "signed_out") {
+                    TvEmptyState(
+                        title = "Inicia sesión",
+                        message = "Conecta tu cuenta de YouTube Music para ver tus recomendaciones y reproducir música en tu TV.",
                         onContentFocus = onContentFocus,
+                        actionLabel = "Iniciar sesión",
+                        onAction = onSignIn,
                     )
                 }
-            }
 
-            val sections = (state as? LoadState.Content)?.value.orEmpty()
-            itemsIndexed(sections, key = { _, section -> "section_${section.id}" }) { index, section ->
-                TvShelf(
-                    title = section.title,
-                    items = section.items,
-                    onOpen = { openItem(it, onPlay, onOpenDetail) },
-                    onPlayCollection = onPlayCollection,
-                    onContentFocus = onContentFocus,
-                )
-                if (index == sections.lastIndex) Spacer(Modifier.height(12.dp))
-            }
+                emptyLibrary -> item(key = "empty") {
+                    TvEmptyState(
+                        title = "Nada por aquí todavía",
+                        message = "Tu biblioteca está vacía. Ajusta tus preferencias o inicia sesión para descubrir música.",
+                        onContentFocus = onContentFocus,
+                        actionLabel = "Ir a Ajustes",
+                        onAction = onGoToSettings,
+                    )
+                }
 
-            if (sections.isEmpty() && state !is LoadState.Content) {
-                item(key = "loading") { TvLoadingState(state) }
+                else -> {
+                    if (hero != null) {
+                        item(key = "hero") {
+                            TvHero(
+                                item = hero.item,
+                                caption = hero.caption,
+                                onPlay = { onPlayItem(hero.item, false) },
+                                onShuffle = { onPlayItem(hero.item, true) },
+                                onOpenDetail = { onOpenDetail(hero.item.stableId) },
+                                onContentFocus = onContentFocus,
+                            )
+                        }
+                    }
+
+                    itemsIndexed(sections, key = { _, section -> "section_${section.id}" }) { index, section ->
+                        TvShelf(
+                            title = section.title,
+                            items = section.items,
+                            onOpen = { openItem(it, onPlay, onOpenDetail) },
+                            onPlayCollection = onPlayCollection,
+                            onTrackActions = onTrackActions,
+                            onContentFocus = onContentFocus,
+                        )
+                        if (index == sections.lastIndex) Spacer(Modifier.height(12.dp))
+                    }
+
+                    if (sections.isEmpty() && state !is LoadState.Content) {
+                        item(key = "loading") { TvLoadingState(state) }
+                    }
+                }
             }
         }
     }
@@ -203,6 +235,7 @@ private fun TvShelf(
     items: List<CatalogItem>,
     onOpen: (CatalogItem) -> Unit,
     onPlayCollection: (String, String) -> Unit,
+    onTrackActions: (Track) -> Unit,
     onContentFocus: () -> Unit,
 ) {
     if (items.isEmpty()) return
@@ -218,7 +251,12 @@ private fun TvShelf(
                 TvMediaCard(
                     item = item,
                     onClick = { onOpen(item) },
-                    onLongPlay = { onPlayCollection(item.stableId, item.title) },
+                    onLongPress = {
+                        when (item) {
+                            is CatalogItem.Song -> onTrackActions(item.track)
+                            else -> onPlayCollection(item.stableId, item.title)
+                        }
+                    },
                     onContentFocus = onContentFocus,
                 )
             }
@@ -230,13 +268,13 @@ private fun TvShelf(
 private fun TvMediaCard(
     item: CatalogItem,
     onClick: () -> Unit,
-    onLongPlay: () -> Unit,
+    onLongPress: () -> Unit,
     onContentFocus: () -> Unit,
 ) {
     val round = item is CatalogItem.Performer
     val shape = if (round) CircleShape else CardShape
     Column(
-        Modifier.width(CardWidth).tvClickable(TvFocusStyle.Card, shape, onFocus = onContentFocus, onClick = onClick),
+        Modifier.width(CardWidth).tvLongClickable(TvFocusStyle.Card, shape, onFocus = onContentFocus, onClick = onClick, onLongClick = onLongPress),
     ) {
         if (round) {
             Box(Modifier.size(CardWidth).clip(CircleShape).background(CanopyColors.Surface), contentAlignment = Alignment.Center) {

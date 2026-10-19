@@ -49,6 +49,7 @@ import dev.sfg.orchard.mobile.ui.theme.CanopyColors
 import dev.sfg.orchard.mobile.ui.theme.LocalAccent
 import dev.sfg.orchard.mobile.ui.tv.focus.TvFocusStyle
 import dev.sfg.orchard.mobile.ui.tv.focus.tvClickable
+import dev.sfg.orchard.mobile.ui.tv.focus.tvLongClickable
 import dev.sfg.orchard.mobile.ui.tv.theme.TvTokens
 
 private val ButtonShape = RoundedCornerShape(50)
@@ -64,6 +65,7 @@ fun TvCollectionScreen(
     onPlayTrack: (List<Track>, Int, String) -> Unit,
     onSave: () -> Unit,
     onContentFocus: () -> Unit,
+    onTrackActions: (Track) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val detail = (state as? LoadState.Content)?.value
@@ -136,6 +138,7 @@ fun TvCollectionScreen(
                             track = track,
                             isCurrent = isCurrent,
                             onPlay = { onPlayTrack(detail.tracks, index, detail.title) },
+                            onLongPress = { onTrackActions(track) },
                             onContentFocus = onContentFocus,
                         )
                     }
@@ -202,6 +205,7 @@ private fun TrackRow(
     track: Track,
     isCurrent: Boolean,
     onPlay: () -> Unit,
+    onLongPress: () -> Unit,
     onContentFocus: () -> Unit,
 ) {
     val accent = LocalAccent.current
@@ -209,7 +213,7 @@ private fun TrackRow(
         Modifier
             .fillMaxWidth()
             .padding(horizontal = 6.dp, vertical = 2.dp)
-            .tvClickable(TvFocusStyle.Row, RowShape, onFocus = onContentFocus, onClick = onPlay)
+            .tvLongClickable(TvFocusStyle.Row, RowShape, onFocus = onContentFocus, onClick = onPlay, onLongClick = onLongPress)
             .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
