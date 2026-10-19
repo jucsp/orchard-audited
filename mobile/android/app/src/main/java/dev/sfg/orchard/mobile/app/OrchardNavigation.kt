@@ -35,6 +35,7 @@ import dev.sfg.orchard.mobile.model.LocalMaxActive
 import dev.sfg.orchard.mobile.model.CatalogKind
 import dev.sfg.orchard.mobile.model.LoadState
 import dev.sfg.orchard.mobile.model.PlaybackTarget
+import dev.sfg.orchard.mobile.pairing.PairingLinkInbox
 import dev.sfg.orchard.mobile.ui.components.PlaylistPickerSheet
 import dev.sfg.orchard.mobile.ui.motion.NavMotion
 import dev.sfg.orchard.mobile.ui.navigation.Routes
@@ -42,6 +43,7 @@ import dev.sfg.orchard.mobile.ui.screens.DetailScreen
 import dev.sfg.orchard.mobile.ui.screens.HomeScreen
 import dev.sfg.orchard.mobile.ui.screens.LibraryScreen
 import dev.sfg.orchard.mobile.ui.screens.NativeLoginScreen
+import dev.sfg.orchard.mobile.ui.screens.PairWithTvScreen
 import dev.sfg.orchard.mobile.ui.screens.SettingsScreen
 import dev.sfg.orchard.mobile.ui.screens.SettingsHomeLayout
 import dev.sfg.orchard.mobile.ui.screens.WelcomeScreen
@@ -96,6 +98,12 @@ internal fun OrchardNavigation(
                 .makeText(context, playback.errorMessage, android.widget.Toast.LENGTH_LONG)
                 .show()
         }
+    }
+
+    // A scanned TV QR opens the pairing screen, which consumes the link itself.
+    val pendingPairLink by PairingLinkInbox.pending.collectAsStateWithLifecycle()
+    LaunchedEffect(pendingPairLink) {
+        if (pendingPairLink != null) nav.navigate(Routes.PAIR_TV) { launchSingleTop = true }
     }
 
     NavHost(
@@ -223,6 +231,14 @@ internal fun OrchardNavigation(
                 onCheckForUpdates = viewModel::checkForUpdates,
                 onInstallUpdate = viewModel::installUpdate,
                 onHomeLayout = { nav.navigate(Routes.SETTINGS_HOME_LAYOUT) },
+                onPairTv = { nav.navigate(Routes.PAIR_TV) { launchSingleTop = true } },
+            )
+        }
+        composable(Routes.PAIR_TV) {
+            PairWithTvScreen(
+                session = viewModel::youtubeSession,
+                spotifySpdc = { viewModel.settings.value.spotifySpdc },
+                onBack = { nav.popBackStack(Routes.PAIR_TV, inclusive = true) },
             )
         }
         composable(Routes.SETTINGS_HOME_LAYOUT) {

@@ -317,6 +317,9 @@ dependencies {
 
     implementation 'eu.buney.kopus:kopus:1.6.1.3'
 
+    // QR encoder for the TV ↔ phone pairing flow (SDD-tv-qr-pairing D3 Opción A). Core only.
+    implementation 'com.google.zxing:core:3.5.3'
+
     implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.30.0'
     implementation(name: 'discord_partner_sdk', ext: 'aar')
 

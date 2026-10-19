@@ -98,6 +98,7 @@ internal fun connectionStatuses(
 @Composable
 internal fun ConnectionsList(
     statuses: Map<ConnectionService, ConnectionStatus>,
+    onPairTv: (() -> Unit)? = null,
     onOpen: (ConnectionService) -> Unit,
 ) {
     val (connected, available) = ConnectionService.entries.partition { statuses[it]?.connected == true }
@@ -116,6 +117,22 @@ internal fun ConnectionsList(
             available.forEachIndexed { index, service ->
                 if (index > 0) PanelDivider()
                 ConnectionRow(service, statuses.getValue(service), onOpen)
+            }
+        }
+    }
+    if (onPairTv != null) {
+        SectionLabel("Devices", 4)
+        SettingsPanel(index = 5) {
+            SettingsRow(
+                title = "Vincular con Android TV",
+                subtitle = "Inicia sesión en la TV con esta cuenta",
+                modifier = Modifier.clickable(onClick = onPairTv),
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = SettingsStyle.Chevron,
+                )
             }
         }
     }

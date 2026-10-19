@@ -37,7 +37,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.sfg.orchard.mobile.app.OrchardApp
 import dev.sfg.orchard.mobile.app.OrchardViewModel
 import dev.sfg.orchard.mobile.auth.OrchardAccountService
+import dev.sfg.orchard.mobile.pairing.PairingLinkInbox
+import dev.sfg.orchard.mobile.pairing.PairingUri
 import dev.sfg.orchard.mobile.ui.theme.OrchardTheme
+import dev.sfg.orchard.mobile.ui.tv.isTvDevice
 
 /** Thin Android entry point; app behavior lives in repositories and state holders. */
 class MainActivity : FragmentActivity() {
@@ -84,6 +87,10 @@ class MainActivity : FragmentActivity() {
         }
         if (intent.action == Intent.ACTION_SEND && intent.type?.startsWith("text/") == true) {
             val sharedText = intent.getStringExtra(Intent.EXTRA_TEXT).orEmpty()
+            if (isPairingLink(sharedText.trim())) {
+                if (!isTvDevice(this)) PairingLinkInbox.offer(sharedText.trim())
+                return
+            }
             if (sharedText.isNotBlank()) {
                 viewModel.handleIncomingLink(sharedText)
             }
@@ -97,8 +104,17 @@ class MainActivity : FragmentActivity() {
             OrchardAccountService.get(this).handleAuthCallback(uri)
             return
         }
+        // The pairing link carries a one-time token: never hand it to the shared-link resolver.
+        // A TV does not send sessions, so it drops the link (SDD-tv-qr-pairing §6.3).
+        if (isPairingLink(dataString)) {
+            if (!isTvDevice(this)) PairingLinkInbox.offer(dataString)
+            return
+        }
         viewModel.handleIncomingLink(dataString)
     }
+
+    private fun isPairingLink(value: String): Boolean =
+        value.startsWith("${PairingUri.SCHEME}://${PairingUri.HOST}", ignoreCase = true)
 
     private fun requestNotificationPermission() {
         if (Build.VERSION.SDK_INT < 33) return

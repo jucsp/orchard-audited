@@ -15,6 +15,7 @@ object TvRoutes {
     const val DETAIL = "detail"
     const val WELCOME = "welcome"
     const val LOGIN = "login"
+    const val LOGIN_WEB = "login_web"
     const val SPOTIFY_LOGIN = "spotify_login"
     const val QOBUZ_LOGIN = "qobuz_login"
     const val ACCOUNT_SWITCH = "account_switch"

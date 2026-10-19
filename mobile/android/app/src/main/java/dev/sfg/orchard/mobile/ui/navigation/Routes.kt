@@ -33,6 +33,7 @@ object Routes {
     const val SPOTIFY_LOGIN = "spotify-login"
     const val QOBUZ_LOGIN = "qobuz-login"
     const val DOWNLOADS = "downloads"
+    const val PAIR_TV = "pair_tv"
     const val DETAIL = "detail/{id}"
 
     fun detail(id: String) = "detail/${android.net.Uri.encode(id)}"

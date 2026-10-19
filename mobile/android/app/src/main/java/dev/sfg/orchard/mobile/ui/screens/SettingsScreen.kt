@@ -104,6 +104,8 @@ fun SettingsScreen(
     onCheckForUpdates: () -> Unit = {},
     onInstallUpdate: (MobileUpdateMetadata) -> Unit = {},
     onHomeLayout: () -> Unit = {},
+    /** Phone only; null hides the "Vincular con Android TV" row (HU-ORCH-13). */
+    onPairTv: (() -> Unit)? = null,
     /**
      * Separate from [onSettings] because switching Autoplay off also strips the tracks it added,
      * which only the view model can do.
@@ -186,7 +188,10 @@ fun SettingsScreen(
                         SettingsPage.Audio -> AudioPage(settings, onSettings, onAutoplayEnabled)
                         SettingsPage.Appearance -> AppearancePage(settings, onSettings, onHomeLayout)
                         SettingsPage.Connections -> if (detail == null) {
-                            ConnectionsList(statuses) { connection = it }
+                            ConnectionsList(
+                                statuses = statuses,
+                                onPairTv = onPairTv?.takeIf { auth is AuthState.SignedIn },
+                            ) { connection = it }
                         } else {
                             ConnectionDetail(
                                 service = detail,

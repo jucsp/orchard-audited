@@ -193,19 +193,7 @@ fun TvOrchardApp(viewModel: OrchardViewModel) {
                         )
                     }
                 }
-                composable(TvRoutes.LOGIN) {
-                    TvSafeContent(collapseRail) {
-                        NativeLoginScreen(
-                            auth = auth,
-                            onBegin = viewModel::beginSignIn,
-                            onSession = { cookie, visitorData, dataSyncId, accountIndex, avatarUrl ->
-                                viewModel.completeSignIn(cookie, visitorData, dataSyncId, accountIndex, pageAvatarUrl = avatarUrl)
-                            },
-                            onCancel = viewModel::cancelSignIn,
-                            onComplete = { nav.popBackStack(TvRoutes.LOGIN, inclusive = true) },
-                        )
-                    }
-                }
+                tvLoginRoutes(nav, viewModel, collapseRail)
                 composable(TvRoutes.ACCOUNT_SWITCH) {
                     TvSafeContent(collapseRail) {
                         NativeLoginScreen(
