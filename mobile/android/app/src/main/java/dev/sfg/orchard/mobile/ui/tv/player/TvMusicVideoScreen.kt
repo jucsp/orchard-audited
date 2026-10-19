@@ -136,12 +136,14 @@ fun TvMusicVideoScreen(
                         )
                     }
                 }
-                VideoControl(Icons.Rounded.MusicNote, "Volver a la canción", onContentFocus) {
-                    onToggleMusicVideo()
-                    onExit()
-                }
+                VideoControl(
+                    Icons.Rounded.MusicNote,
+                    "Volver a la canción",
+                    onContentFocus,
+                    onClick = { onToggleMusicVideo(); onExit() },
+                )
                 Spacer(Modifier.width(10.dp))
-                VideoControl(Icons.Rounded.Close, "Cerrar video", onContentFocus, onExit)
+                VideoControl(Icons.Rounded.Close, "Cerrar video", onContentFocus, onClick = onExit)
             }
 
             Spacer(Modifier.weight(1f))
@@ -151,17 +153,17 @@ fun TvMusicVideoScreen(
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                VideoTransportIcon(Icons.Rounded.SkipPrevious, "Anterior", onContentFocus, onPrevious)
+                VideoTransportIcon(Icons.Rounded.SkipPrevious, "Anterior", onContentFocus, onClick = onPrevious)
                 Spacer(Modifier.width(40.dp))
                 VideoTransportIcon(
                     if (playback.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
                     if (playback.isPlaying) "Pausa" else "Reproducir",
                     onContentFocus,
-                    onToggle,
                     playFocus = playFocus,
+                    onClick = onToggle,
                 )
                 Spacer(Modifier.width(40.dp))
-                VideoTransportIcon(Icons.Rounded.SkipNext, "Siguiente", onContentFocus, onNext)
+                VideoTransportIcon(Icons.Rounded.SkipNext, "Siguiente", onContentFocus, onClick = onNext)
             }
 
             Spacer(Modifier.weight(1f))
@@ -176,8 +178,8 @@ private fun VideoControl(
     icon: ImageVector,
     description: String,
     onContentFocus: () -> Unit,
-    onClick: () -> Unit,
     playFocus: FocusRequester? = null,
+    onClick: () -> Unit,
 ) {
     Box(
         Modifier
@@ -197,8 +199,8 @@ private fun VideoTransportIcon(
     icon: ImageVector,
     description: String,
     onContentFocus: () -> Unit,
-    onClick: () -> Unit,
     playFocus: FocusRequester? = null,
+    onClick: () -> Unit,
 ) {
     val hero = playFocus != null
     Box(

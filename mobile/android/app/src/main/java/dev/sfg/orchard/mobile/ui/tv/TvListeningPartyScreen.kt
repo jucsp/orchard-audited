@@ -96,7 +96,7 @@ fun TvListeningPartyScreen(
                         Spacer(Modifier.width(10.dp))
                         Text("Listening Party", style = TvTokens.tvHeadline, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
-                    PartyPill("Volver", onBack)
+                    PartyPill("Volver", onClick = onBack)
                 }
 
                 Spacer(Modifier.height(18.dp))
@@ -141,11 +141,12 @@ private fun InactiveParty(
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 PartyKey("Borrar", first = false, null) { onCodeChange(code.dropLast(1)) }
-                PartyPill("Crear sala", onCreate)
+                PartyPill("Crear sala", onClick = onCreate)
                 PartyPill(
                     "Unirse",
                     enabled = code.length == ROOM_CODE_LENGTH,
-                ) { onJoin(code) }
+                    onClick = { onJoin(code) },
+                )
             }
         }
     }
@@ -173,10 +174,13 @@ private fun ActiveParty(party: PartyState, onLeave: () -> Unit) {
         RoomCodeDisplay(party.code)
         Spacer(Modifier.height(14.dp))
         if (party.code.isNotBlank()) {
-            PartyPill("Copiar código") {
-                copyToClipboard(context, party.code, label = "Orchard Room Code")
-                Toast.makeText(context, "Código copiado", Toast.LENGTH_SHORT).show()
-            }
+            PartyPill(
+                "Copiar código",
+                onClick = {
+                    copyToClipboard(context, party.code, label = "Orchard Room Code")
+                    Toast.makeText(context, "Código copiado", Toast.LENGTH_SHORT).show()
+                },
+            )
         }
         Spacer(Modifier.height(22.dp))
         Text(
@@ -195,8 +199,8 @@ private fun ActiveParty(party: PartyState, onLeave: () -> Unit) {
         Spacer(Modifier.weight(1f))
         PartyPill(
             if (party.isHost) "Cerrar sala" else "Salir de la sala",
-            onLeave,
             danger = true,
+            onClick = onLeave,
         )
     }
 }
@@ -246,9 +250,9 @@ private fun PartyKey(
 @Composable
 private fun PartyPill(
     label: String,
-    onClick: () -> Unit,
     enabled: Boolean = true,
     danger: Boolean = false,
+    onClick: () -> Unit,
 ) {
     val accent = LocalAccent.current
     val container = when {
