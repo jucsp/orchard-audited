@@ -15,7 +15,12 @@
 ---
 
 ## 🏗️ In Progress
-_(vacío)_
+- [ ] **HU-ORCH-11b: Paridad Funcional Total de Android TV con Móvil (Cuentas, Ajustes, Onboarding, Video y Social)** `[Responsables: DeepSeek Dev & Claude PM/QA]`
+  - [Responsable: DeepSeek Dev] Conexión de `SettingsScreen` completa a `TvRoutes.SETTINGS` con navegación D-pad.
+  - [Responsable: DeepSeek Dev] Habilitación de flujo de inicio / onboarding (`WelcomeScreen`) y rutas de autenticación (`Routes.LOGIN`, `Routes.SPOTIFY_LOGIN`, `Routes.QOBUZ_LOGIN`, `Routes.ACCOUNT_SWITCH`).
+  - [Responsable: DeepSeek Dev] Integración de Video Musical (`MusicVideoScreen`), ecualizador, descargas y salas de Listening Party adaptadas para control remoto.
+  - [Responsable: DeepSeek Dev] Menús contextuales de pistas/colecciones (`TrackActionsPopup`) operables con botón largo OK en TV.
+  - [Responsable: Claude PM/QA] Auditoría de navegación D-pad en emulador/dispositivo y suite de tests unitarios e integrados.
 
 ---
 

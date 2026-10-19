@@ -483,3 +483,43 @@ Sin tests: `CastDiscovery` (depende de `NsdManager`), `CastV2Player` y `CastCont
 | TV-INV-9 Tamaño y cabeceras | ✅ | Máximo 396 líneas (`TvNowPlaying.kt`); SPDX AGPL-3.0-or-later en los 14 archivos de `ui/tv/` |
 
 **Bloqueantes para llevar `integrate/hu-orch-11` a `audited`:** `testDebugUnitTest`, los dos `assembleRelease` y `:app:dependencies` en verde en Actions; decisión del PO sobre la traducción ausente en 32 bits y verificación de `kopus`/Earmark en `armv7` (T0); T10, T11 (D2), T12, T13 y Q2; H-TV1; constancia de la excepción a SDD §3.2 (Q4).
+
+### 5.12 Paridad funcional Android TV (HU-ORCH-11b, 2026-10-19)
+
+- **Base:** `68f72ad` más cambios sin commit en `integrate/hu-orch-11-tv-full`: 6 archivos modificados (`TvOrchardApp.kt`, `TvRoutes.kt`, `focus/TvFocus.kt`, `home/TvHomeScreen.kt`, `library/TvLibraryScreen.kt`, `player/TvNowPlaying.kt`) y 5 nuevos (`TvEmptyState.kt`, `TvSafeContent.kt`, `TvTrackActionsPopup.kt`, `TvListeningPartyScreen.kt`, `player/TvMusicVideoScreen.kt`). Método: revisión estática línea a línea, contraste de cada llamada con las firmas de `OrchardViewModel`, `ui/screens/*` y `social/ListeningPartyModels.kt`, y barrido mecánico de identificadores sin importar. Esta máquina no tiene Android SDK ni `kotlinc`: **no se compiló ni se ejecutó ningún test**.
+
+#### 5.12.1 Defectos corregidos en QA (sin commit)
+
+| # | Archivo | Defecto y efecto | Corrección |
+| --- | --- | --- | --- |
+| Q-13 | `TvTrackActionsPopup.kt` | Usa `TvTokens` sin importarlo (paquete `ui.tv.theme`): no compila | Import agregado |
+| Q-14 | `TvOrchardApp.kt` | Usa `TvMusicVideoScreen` (paquete `ui.tv.player`) sin importarlo: no compila | Import agregado |
+| Q-15 | `TvSafeContent.kt` | El rail solo colapsaba con `pointerInput`/toques, que no existen con D-pad: al entrar con foco a Ajustes, Logins, Welcome o Descargas el rail expandido quedaba encima (TV-INV-2) | Colapso al ganar foco cualquier descendiente con `Modifier.tvFocusWithin`, ubicado en `focus/TvFocus.kt` para cumplir el `git grep` de TV-INV-3 |
+| Q-16 | `TvListeningPartyScreen.kt` | Sin márgenes: título, teclado y botones desde x = 0 dp, bajo el rail (TV-INV-2); sin `onContentFocus`, el rail no colapsaba | Contenido dentro de `TvSafeContent`; parámetro `onContentFocus` cableado |
+| Q-17 | `player/TvMusicVideoScreen.kt` | Controles desde x = 48 dp, bajo el rail colapsado | Inicio en `TvTokens.ContentStartX` (92 dp) |
+| Q-18 | `TvTrackActionsPopup.kt` | `requestFocus()` fuera del `Dialog` (corre antes de que la ventana componga) y, sin playlists, sobre un `FocusRequester` sin adjuntar: crash o diálogo sin foco (TV-INV-3) | `LaunchedEffect` dentro del `Dialog`; fila "Volver" siempre presente como primer foco del selector |
+| Q-19 | `TvTrackActionsPopup.kt` | Elegir playlist no cerraba el popup | Cierra y luego agrega |
+| Q-20 | `detail/TvCollectionScreen.kt` | Pulsación larga en una pista no abría acciones (Inicio y Reproductor sí) | `TrackRow` con `tvLongClickable` y `onTrackActions` |
+| Q-21 | `library/TvLibraryScreen.kt` | Ídem en Canciones y Recientes | `TvSongList` y tarjetas de Recientes con `tvLongClickable`; playlists, álbumes y artistas sin acción larga (no son pistas) |
+| Q-22 | `TvOrchardApp.kt`, `library/TvLibraryScreen.kt` | Ruta `DOWNLOADS` registrada pero inalcanzable; el filtro Descargas mostraba un texto sin foco | Filtro Descargas con `TvEmptyState` "Abrir descargas" que navega a `TvRoutes.DOWNLOADS`; foco inicial en esa acción |
+
+#### 5.12.2 Verificación
+
+| Punto | Resultado | Evidencia |
+| --- | --- | --- |
+| Sintaxis, tipos e imports | ✅ estático | Firmas contrastadas: `WelcomeScreen`, `NativeLoginScreen`, `SpotifyLoginScreen`, `QobuzLoginScreen`, `DownloadsScreen`, `SettingsScreen`, `SettingsHomeLayout`, `MusicVideoSurface`, `completeSignIn(..., pageAvatarUrl)`, `addTrackToPlaylist`, `playlistChoices`, `createListeningParty`/`joinListeningParty`/`leaveListeningParty`, `MusicVideoState.available`, `PartyState.code/isHost/isActive`, `Track.albumId/artistId`. Barrido de identificadores: solo falsos positivos (entradas de enum) |
+| TV-INV-9 ≤ 500 líneas y SPDX | ✅ | Máximo 482 (`TvOrchardApp.kt`), luego 462 (`TvNowPlaying.kt`); SPDX AGPL-3.0-or-later en los 19 archivos de `ui/tv/` |
+| Long-press → `onTrackActions` | ✅ estático | Inicio (canciones), Reproductor ("Más opciones"), Detalle (filas) y Biblioteca (Canciones, Recientes) |
+| TV-INV-2 en pantallas integradas | ✅ estático | `TvSafeContent` (92/48/27 dp desde `TvTokens`) envuelve Welcome, Login, cambio de cuenta, Spotify, Qobuz, Descargas, Ajustes, Diseño de Inicio y Listening Party |
+| TV-INV-3 grep | ✅ | Sin `onFocusChanged` ni `.border(` fuera de `ui/tv/focus/` |
+| TV-INV-4 hosts y red | ✅ estático | `ui/tv/` sin URLs, sockets, `gms`, Firebase ni analítica |
+| Compilación y tests | ❌ no ejecutado | Sin Android SDK local |
+
+#### 5.12.3 Observaciones abiertas
+
+- **O-1:** Las pantallas del teléfono embebidas no usan `tvFocus`: su foco no tiene el tratamiento TV (TV-INV-3) ni foco inicial garantizado. Requiere adaptación o pantallas TV propias (T11).
+- **O-2:** `NavHost` registra su `BackHandler` después del de `TvOrchardApp`, así que fuera de los destinos raíz "Atrás" desapila la pantalla en vez de colapsar primero el rail. Preexistente.
+- **O-3:** `TvSearchScreen` no tiene pulsación larga sobre resultados de canción; fuera del alcance pedido.
+- **O-4:** `TvMusicVideoScreen` recibe `musicVideo` y no lo usa (warning de compilación).
+
+**Bloqueantes para llevar `integrate/hu-orch-11-tv-full` a `audited`:** `testDebugUnitTest` y los dos `assembleRelease` en verde en Actions; prueba en el Philips del cliente de Login, Ajustes, popup de acciones (pulsación larga del botón central) y Listening Party; los bloqueantes de §5.11 que siguen abiertos.
