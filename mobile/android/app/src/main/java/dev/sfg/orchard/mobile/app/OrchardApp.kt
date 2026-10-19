@@ -71,6 +71,11 @@ import dev.sfg.orchard.mobile.ui.theme.LocalAccent
 
 @Composable
 fun OrchardApp(viewModel: OrchardViewModel) {
+    // Android TV gets its own tree; the phone tree below runs unchanged everywhere else.
+    if (dev.sfg.orchard.mobile.ui.tv.isTvLayout()) {
+        dev.sfg.orchard.mobile.ui.tv.TvOrchardApp(viewModel)
+        return
+    }
     val navController = rememberNavController()
     val backStack by navController.currentBackStackEntryAsState()
     val route = backStack?.destination?.route

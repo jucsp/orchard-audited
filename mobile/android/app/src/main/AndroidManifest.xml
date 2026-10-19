@@ -20,6 +20,12 @@
   <!-- Updater Permissions -->
   <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+  <!-- Android TV: leanback launcher entry without excluding phones, Ethernet-only or Bluetooth-less boxes. -->
+  <uses-feature android:name="android.software.leanback" android:required="false" />
+  <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+  <uses-feature android:name="android.hardware.wifi" android:required="false" />
+  <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
+
   <queries>
     <intent>
       <action android:name="android.intent.action.VIEW" />
@@ -37,6 +43,7 @@
     android:label="@string/app_name"
     android:icon="@mipmap/ic_launcher"
     android:roundIcon="@mipmap/ic_launcher_round"
+    android:banner="@drawable/tv_banner"
     android:allowBackup="false"
     android:fullBackupContent="@xml/backup_rules"
     android:dataExtractionRules="@xml/data_extraction_rules"
@@ -57,6 +64,7 @@
       <intent-filter>
         <action android:name="android.intent.action.MAIN" />
         <category android:name="android.intent.category.LAUNCHER" />
+        <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
       </intent-filter>
       <intent-filter>
         <action android:name="android.intent.action.VIEW" />
