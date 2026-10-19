@@ -15,9 +15,7 @@
 ---
 
 ## 🏗️ In Progress
-- [ ] **HU-ORCH-11: Soporte y Compilación para Android TV (D-Pad & Leanback)**
-  - [Responsable: Claude PM/QA] Contrato SDD (`SDD-android-tv.md`), verificación QA profunda (unitarias y funcionales) y pipeline CI de release TV.
-  - [Responsable: DeepSeek Dev] Implementación de layouts Jetpack Compose TV (`dev.sfg.orchard.mobile.ui.tv.*`), sistema de foco D-pad (`Modifier.tvFocus`), rail expandible, reproductor con panel Letras/Cola, detalle de colección, búsqueda con teclado TV, biblioteca y parche en `UpdateManager.kt`.
+_(vacío)_
 
 ---
 
@@ -27,6 +25,11 @@ _(vacío)_
 ---
 
 ## ✅ Done
+- [x] **HU-ORCH-11: Soporte y Compilación para Android TV (D-Pad & Leanback)** `[Responsables: DeepSeek Dev & Claude PM/QA]`
+  - Implementación completa de la interfaz Opción A "Glass Rail" para Android TV: `TvDetection.kt`, tokens y tipografía TV en `TvTokens.kt`, sistema de foco unificado `Modifier.tvFocus` con 6 estilos (`Card`, `Button`, `Row`, `Key`, `NavItem`, `Transport`) con elevación de zIndex y escala sin alterar layout.
+  - Rail lateral expandible `TvNavigationRail.kt`, Scaffold y NavHost `TvOrchardApp.kt`, pantalla de Inicio (`TvHomeScreen.kt`), Reproductor con paneles dinámicos (`TvNowPlaying.kt`, `TvLyricsPanel.kt`, `TvQueuePanel.kt`, `TvPanelTabs.kt`), Detalle de colección (`TvCollectionScreen.kt`), Búsqueda con teclado D-pad en pantalla (`TvSearchScreen.kt`) y Biblioteca (`TvLibraryScreen.kt`).
+  - Manifiesto actualizado con `LEANBACK_LAUNCHER`, banner `tv_banner.png` y `touchscreen=false`. Actualizador `UpdateManager.kt` adaptado para discriminar `Orchard-AndroidTV-arm.apk` en TV.
+  - Pipeline `.github/workflows/release.yml` actualizado para compilar y publicar `Orchard-AndroidTV-arm.apk` junto a `Orchard-Android-arm64-v8a.apk`. Verificación en verde en CI (Run #39179846143).
 - [x] **HU-ORCH-12: Chromecast con CastV2 propio, sin Play Services** `[Responsables: DeepSeek Dev & Claude PM/QA]`
   - Re-implementación soberana completa: codec proto2 `CastMessage`, canal TLS con TOFU `CastTrust` y `CastChannel`, máquina de estados `CastSession` con Default Media Receiver (`CC1AD845`), sub-canal `CastMediaChannel`, servidor de streaming con token de 128 bits y filtro de IP `ChromecastStreamServer`, descubrimiento mDNS `CastDiscovery`, reproductor `CastV2Player` (`SimpleBasePlayer`) y traspaso local ↔ Cast en `ChromecastPlayback`.
   - Retiro de dependencias privativas (`media3-cast`), UI Jetpack Compose con soporte D-Pad TV y persistencia TOFU en SharedPreferences. 95 tests unitarios en 9 clases pasando en CI y publicado en release `v1.0.0-canary.9-audited.11`.
