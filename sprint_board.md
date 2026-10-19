@@ -27,6 +27,19 @@ _(vacío)_
 ---
 
 ## ✅ Done
+- [x] **HU-ORCH-14: Rediseño TV Etapa 2, Modo Nocturno y Salida con Control Remoto** `[Responsables: DeepSeek Dev, Claude PM/QA & Antigravity PO]`
+  - Implementación completa de Etapa 2 en Compose para pantallas de 65" (safe area 48/27 dp, `ContentStartX` 116 dp, rail retráctil animado de 180 dp que empuja el contenido con `RailPush` de 136 dp y oscurece al 45%).
+  - Fondos ambientales por rol con `TvAmbientBackdrop` (Carátula animada Kawarp equilibrada/vibrante, resplandor, oscuro y noche).
+  - Modo nocturno en reproductor: botón 🌙 en transporte y menú `TvPlayerMenu`, mini-reproductor de 170 dp sobre negro absoluto `#000000`, desplazamiento OLED anti-burn-in cada 60 s, temporizador de 8 s al pulsar D-pad y soporte de horario automático programado.
+  - Navegación con control remoto y salida limpia: pulsar Atrás en `TvRoutes.HOME` con rail colapsado y sin diálogo cierra la aplicación (`Activity.finish()`); descarte prioritario de acciones `actionTrack` y colapso de rail al retroceder.
+  - Ajustes nativos de TV en dos columnas (`TvSettingsScreen`, `TvSettingsPages`, `TvHomeLayoutScreen`) con `TvUiPrefs` fuera de `OrchardSettings`.
+  - Preservación íntegra de vinculación por código QR y LAN (`HU-ORCH-13`).
+- [x] **HU-ORCH-15: Infraestructura de Firma Permanente y Manifiestos de Actualización TV/Móvil** `[Responsables: DeepSeek Dev, Claude PM/QA & Antigravity PO]`
+  - Almacén de claves permanente del fork (`orchard-release.jks`, RSA 4096 bits, 10.000 días) configurado en GitHub Secrets (`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`).
+  - Resolución definitiva del error de incompatibilidad de firma ("las versiones no son compatibles") entre actualizaciones de APK.
+  - Actualizador `UpdateManager.kt` adaptado para consultar `latest-android-tv.json` prioritariamente en TV con fallback al manifiesto móvil, evaluando compatibilidad con `manifestFitsDevice`.
+  - Pipeline `.github/workflows/release.yml` actualizado para generar automáticamente `dist/latest-android.json` y `dist/latest-android-tv.json` con SHA-256 real de los APKs y subirlos a los releases del fork.
+  - 16/16 tests unitarios en verde en `UpdateManagerTest.kt`.
 - [x] **HU-ORCH-13: Login por Código QR y Vinculación Remota de Dispositivos (Android TV & Móvil)** `[Responsables: DeepSeek Dev, Claude PM/QA & Antigravity PO]`
   - Contrato formalizado en `SDD-tv-qr-pairing.md` bajo las invariantes `PAIR-INV-1` a `PAIR-INV-8`.
   - Protocolo criptográfico soberano `orchard-pair-v1` (ECDH P-256 + HKDF + AES-256-GCM) sin fuga a servidores externos, canal autenticado por huella SHA-256 en QR o SAS numérico de 6 dígitos.

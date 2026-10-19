@@ -56,7 +56,7 @@ Reglas canónicas en `AGENTS.md`; `CLAUDE.md` y `GEMINI.md` lo importan y añade
 - **Deuda heredada (REQ-A6):** `pip install` sin hashes y `linuxdeploy` *continuous* sin verificar el hash en `package-linux-appimage.sh`.
 - **Backup de rol (HU-ORCH-05):** Claude (PM/QA) alcanzó rate limit (resets 6:20pm); DeepSeek Dev asumió las funciones de PM/QA e implementó/verificó el pipeline y el RPM.
 - **Deuda menor:** `docs/DEVELOPMENT.md` y `docs/BOOTSTRAPPER.md` aún enlazan a `.github/workflows/manual-desktop-build.yml` (borrado); actualizar en una HU futura.
-- **APK de Android (HU-ORCH-10):** job `android` (`ubuntu-24.04`) con Node 24, JDK 17, Rust `aarch64-linux-android` y `x86_64-linux-android` y cargo-ndk. Instala los dos targets porque la tarea `cargo ndk` de `build.gradle` compila `orchardAbis` (arm64-v8a y x86_64) también en `assembleRelease`, aunque el APK solo empaquete arm64-v8a. Instala el NDK de `orchardNdkVersion` y fija `ANDROID_NDK_HOME` porque el del runner es otro. Publica `Orchard-Android-arm64-v8a.apk`, que `publish` exige. Firma con los secretos `ANDROID_KEYSTORE_*`; sin ellos usa una keystore desechable, y como cambia la firma en cada release el APK no se instala sobre el anterior. No publica `latest-android.json`, así que el `UpdateManager` de Android no ve versiones nuevas.
+- **APK de Android (HU-ORCH-10, HU-ORCH-15):** job `android` (`ubuntu-24.04`) con Node 24, JDK 17, Rust `aarch64-linux-android` y `x86_64-linux-android` y cargo-ndk. Instala los dos targets porque la tarea `cargo ndk` de `build.gradle` compila `orchardAbis` (arm64-v8a y x86_64) también en `assembleRelease`, aunque el APK solo empaquete arm64-v8a. Instala el NDK de `orchardNdkVersion` y fija `ANDROID_NDK_HOME` porque el del runner es otro. Publica `Orchard-Android-arm64-v8a.apk` y `Orchard-AndroidTV-arm.apk`. Firma permanente garantizada mediante los secretos `ANDROID_KEYSTORE_*` del fork (RSA 4096 bits, 10.000 días), permitiendo actualización directa sin desinstalación. Genera y publica `latest-android.json` y `latest-android-tv.json` con SHA-256 real.
 
 ## 7. Soberanía de servicios (HU-ORCH-06) y purga de frontend (HU-ORCH-07/08)
 - **Worker propio (`orchard-account`):** desplegado en `connect.kasper-cloud.com` con base D1 `orchard-accounts`, secrets cargados (`GOOGLE_CLIENT_SECRET`, `SIGNING_KEY`, etc.) y Durable Objects `ConnectHub` y `PartyRoom`.
@@ -108,3 +108,23 @@ Rama `integrate/hu-orch-13-tv-qr-login`, contrato `SDD-tv-qr-pairing.md`.
   - TV: `TvPairingServer` en puerto efímero, anuncio mDNS `_orchard-pair._tcp` (`PairingAdvertiser`), pantalla `TvQrLoginScreen` (Canvas QR, timer, SAS, fallback web a `TvRoutes.LOGIN_WEB`) y diálogo `TvPairingConfirmDialog`.
   - Teléfono: `PairingDiscovery`, `PairingClient`, pantalla `PairWithTvScreen`, diálogo `PairConfirmDialog`, fila en `SettingsConnections.kt` y enrutamiento deep link `orchard://pair` en `MainActivity.kt`.
 - **Verificación QA:** 43/43 tests unitarios JVM pasando en verde (`PairingCryptoTest` 10/10, `PairingMessagesTest` 9/9, `PairingUriTest` 8/8, `TvPairingServerTest` 11/11, `PairingClientTest` 5/5).
+
+## 11. Rediseño TV Etapa 2, Modo Nocturno, Salida con Control Remoto y Firma Permanente (HU-ORCH-14 & HU-ORCH-15)
+Ramas `integrate/etapa2-tv-and-updates` → `audited`.
+- **Problema de Negocio:**
+  1. La versión inicial en Android TV tenía mala legibilidad y ergonomía visual en TVs grandes (Phillips 65"): carátula oscura, menús desproporcionados cortados en los bordes, rail demasiado ancho y dificultad para salir de la app al retroceder.
+  2. Fallo de actualización: Las actualizaciones de APK en Android arrojaban "las versiones no son compatibles", forzando desinstalar y perder la sesión autenticada debido a que GitHub Actions firmaba con certificados desechables distintos en cada ejecución.
+- **Soluciones Implementadas:**
+  - **HU-ORCH-14 (Rediseño TV Etapa 2):**
+    - Safe area de 48 dp horizontal y 27 dp vertical, `ContentStartX` a 116 dp.
+    - Rail lateral en cápsula de vidrio flotante que pasa de overlay a **push animado** (180 dp expandido, empuja contenido 136 dp y lo oscurece al 45%).
+    - Fondos ambientales dinámicos por rol (`TvAmbientBackdrop`) con Kawarp equilibrado/vibrante, resplandor suave y noche absoluta.
+    - Modo Nocturno en reproductor: Botón 🌙 en transporte (`TvPlayerControls`), mini-reproductor de 170 dp sobre negro `#000000`, shift anti-burn-in OLED cada 60 s, temporizador de 8 s al interactuar con D-pad y soporte de horario programado (`TvUiPrefs`).
+    - Navegación D-pad: Salida limpia de la app al retroceder desde Home con rail colapsado (`Activity.finish()`), descarte prioritario de `actionTrack` y cierre de rail.
+    - Ajustes nativos de TV en dos columnas (`TvSettingsScreen`, `TvSettingsPages`, `TvHomeLayoutScreen`) con `TvUiPrefs` fuera de `OrchardSettings`.
+    - Preservación íntegra de `TvLoginRoutes.kt` y `pairing/*` (HU-ORCH-13).
+  - **HU-ORCH-15 (Firma Permanente y Manifiestos de Actualización):**
+    - Keystore permanente RSA 4096 (`orchard-release.jks`) configurado en los 4 secretos de GitHub Actions (`ANDROID_KEYSTORE_*`).
+    - Generación automática en CI (`release.yml`) de los manifiestos `latest-android.json` y `latest-android-tv.json` con SHA-256 real de los APKs compilados.
+    - `UpdateManager.kt` consulta `latest-android-tv.json` en TV (fallback al de teléfono) y valida con `manifestFitsDevice`.
+    - 16/16 tests JVM pasando en verde en `UpdateManagerTest.kt`.

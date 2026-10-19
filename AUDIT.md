@@ -556,3 +556,32 @@ Sin tests: `CastDiscovery` (depende de `NsdManager`), `CastV2Player` y `CastCont
 | `TvPairingServerTest` | ✅ 11/11 | Sockets reales loopback, 5 fallos -> shutdown, 409 en colisión, expiración |
 | `PairingClientTest` | ✅ 5/5 | Aborto si huella no coincide, envío condicionado a confirmación |
 | PAIR-INV-1 a 8 | ✅ | Cero fuga externa, consentimiento táctil explícito, cero Play Services, efímero y limpio, canal autenticado, sin secretos en logs |
+
+### 5.14 Rediseño TV Etapa 2, Modo Nocturno, Salida con Control Remoto y Actualizador TV (HU-ORCH-14 & HU-ORCH-15, 2026-10-19)
+
+- **Contratos:** `SDD-android-tv.md` (TV-INV-1 a 9) y `SDD-orchard-audit-fork.md` (INV-1 a 7).
+- **Ramas:** `integrate/etapa2-tv-and-updates` → `audited`.
+- **Alcance HU-ORCH-14:**
+  - `mobile/.../ui/tv/`: `TvTokens.kt` (safe area 48/27 dp, `ContentStartX` 116 dp, `RailPush`), `TvFocus.kt`, `TvAmbientBackdrop.kt` (roles Player/Menu/Night con Kawarp), `TvUiPrefs.kt`, `rail/TvNavigationRail.kt` (cápsula 44/180 dp), `home/TvHomeScreen.kt`, `player/TvNowPlaying.kt`, `player/TvNightPlayer.kt` (170 dp, negro absoluto `#000000`, drift anti-burn-in), `player/TvPlayerControls.kt` (botón 🌙), `player/TvPanelTabs.kt`, `player/TvLyricsPanel.kt`, `player/TvPlayerMenu.kt`, `player/TvQueuePanel.kt`, `settings/TvSettingsScreen.kt`, `settings/TvSettingsPages.kt`, `settings/TvHomeLayoutScreen.kt`, `settings/TvSettingsRoutes.kt`, `TvOrchardApp.kt`, `TvRoutes.kt`.
+  - Navegación y BackHandler: salida de la aplicación al retroceder en Home (`Activity.finish()`), descarte prioritario de `actionTrack`, colapso dinámico del rail.
+  - Preservación íntegra de `TvLoginRoutes.kt` y `pairing/*` (HU-ORCH-13).
+- **Alcance HU-ORCH-15:**
+  - Keystore permanente del fork (`orchard-release.jks`, RSA 4096, 10.000 días) cargado en Secrets de GitHub Actions (`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`). Resuelve el fallo de incompatibilidad de firmas al actualizar.
+  - `mobile/.../UpdateManager.kt` y `UpdateManagerTest.kt`: soporte de `latest-android-tv.json` prioritario para TV con fallback al manifiesto de teléfono. 16/16 tests JVM pasando.
+  - `.github/workflows/release.yml`: generación de manifiestos con SHA-256 real de APKs en `dist/*`.
+
+#### 5.14.1 Defectos Corregidos en QA
+
+| # | Archivo | Defecto y efecto | Corrección |
+|---|---|---|---|
+| Q-30 | `TvOrchardApp.kt` | En pantallas internas el NavHost ganaba al BackHandler del rail si estaba expandido | Composición condicional del BackHandler del rail (`if (railExpanded && !immersive)`) para garantizar prioridad máxima |
+| Q-31 | `.github/workflows/release.yml` | `versionCode` fijo en 20008 en manifiestos | Extracción dinámica de `versionCode` y `versionName` desde `build.gradle` |
+| Q-32 | `UpdateManagerTest.kt` | Comentario narrativo residual | Limpieza de comentario para cumplir directrices de estilo |
+
+#### 5.14.2 Verificación de Invariantes
+
+| Invariante | Resultado | Verificación |
+|---|---|---|
+| TV-INV-1 a 9 | ✅ | Safe area 48/27 dp, foco continuo con escalado y borde 2 dp, cero dependencias propietarias, compatibilidad baja gama, 31 archivos bajo 500 líneas con cabecera AGPL |
+| Actualizador | ✅ | Firma permanente única en CI, verificación de SHA-256, manifiestos separados y 16/16 tests unitarios pasando |
+
