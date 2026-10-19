@@ -523,3 +523,36 @@ Sin tests: `CastDiscovery` (depende de `NsdManager`), `CastV2Player` y `CastCont
 - **O-4:** `TvMusicVideoScreen` recibe `musicVideo` y no lo usa (warning de compilación).
 
 **Bloqueantes para llevar `integrate/hu-orch-11-tv-full` a `audited`:** `testDebugUnitTest` y los dos `assembleRelease` en verde en Actions; prueba en el Philips del cliente de Login, Ajustes, popup de acciones (pulsación larga del botón central) y Listening Party; los bloqueantes de §5.11 que siguen abiertos.
+
+### 5.13 Vinculación TV ↔ Teléfono por QR y LAN (HU-ORCH-13, 2026-10-19)
+
+- **Contrato:** `SDD-tv-qr-pairing.md` (invariantes `PAIR-INV-1` a `PAIR-INV-8`).
+- **Rama:** `integrate/hu-orch-13-tv-qr-login`.
+- **Archivos:**
+  - `dev.sfg.orchard.mobile.pairing`: `PairingCrypto.kt`, `PairingMessages.kt`, `PairingUri.kt`, `QrMatrixEncoder.kt`, `TvPairingServer.kt`, `PairingAdvertiser.kt`, `PairingClient.kt`, `PairingDiscovery.kt`.
+  - UI TV: `ui/tv/pairing/TvQrLoginScreen.kt`, `ui/tv/pairing/TvPairingConfirmDialog.kt`, `ui/tv/TvLoginRoutes.kt`, `ui/tv/TvRoutes.kt`, `ui/tv/TvOrchardApp.kt`.
+  - UI Móvil: `ui/screens/PairWithTvScreen.kt`, `ui/screens/PairConfirmDialog.kt`, `ui/screens/SettingsConnections.kt`, `app/OrchardNavigation.kt`, `MainActivity.kt`.
+  - Tests: `PairingCryptoTest.kt`, `PairingMessagesTest.kt`, `PairingUriTest.kt`, `TvPairingServerTest.kt`, `PairingClientTest.kt`, `PairingTestSupport.kt`.
+
+#### 5.13.1 Defectos Corregidos en QA
+
+| # | Archivo | Defecto y efecto | Corrección |
+|---|---|---|---|
+| Q-23 | `PairingMessages.kt` | `requireKeys` rechazaba el campo obligatorio `v` en todos los mensajes, abortando cualquier intento de vinculación con 400 | `v` admitido explícitamente en el esquema |
+| Q-24 | `PairingMessages.kt` | `boundedText` visibilidad `private` rompiendo compilación de `PairingSessionPayload` | Visibilidad ajustada a `internal` |
+| Q-25 | `MainActivity.kt` | El deep link `orchard://pair` pasaba al resolvedor genérico de enlaces compartidos, exponiendo el token a red | Interceptación previa en `MainActivity`: solo teléfono lo enruta a `pair_tv`, TV lo ignora |
+| Q-26 | `TvPairingServer.kt` | El temporizador no expiraba si ningún socket se conectaba | Monitoreo temporal cada 500 ms en loop de aceptación |
+| Q-27 | `TvPairingServer.kt` | Payloads sobredimensionados y timeouts no computaban en el contador de fallos | Contabilización estricta de 5 fallos máximos antes de `close()` inmediato |
+| Q-28 | `PairingUri.kt` / `TvPairingServer.kt` | Aceptaba rangos no privados (CGNAT / públicas) | Filtro estricto RFC 1918 (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16) |
+| Q-29 | `PairingMessages.kt` | `PairingKeyExchange.toString()` exponía el código SAS | Ocultación completa de secretos en `toString()` (PAIR-INV-7) |
+
+#### 5.13.2 Verificación de Invariantes y Tests
+
+| Test / Invariante | Resultado | Casos probados |
+|---|---|---|
+| `PairingCryptoTest` | ✅ 10/10 | Roundtrip ECDH + HKDF + GCM, vector RFC 5869, simulación MITM, AAD inválido |
+| `PairingMessagesTest` | ✅ 9/9 | Validación estricta JSON, campos desconocidos, esquemas y límites |
+| `PairingUriTest` | ✅ 8/8 | URI válida, rechazo de IP pública, loopback, IPv6, puertos inválidos |
+| `TvPairingServerTest` | ✅ 11/11 | Sockets reales loopback, 5 fallos -> shutdown, 409 en colisión, expiración |
+| `PairingClientTest` | ✅ 5/5 | Aborto si huella no coincide, envío condicionado a confirmación |
+| PAIR-INV-1 a 8 | ✅ | Cero fuga externa, consentimiento táctil explícito, cero Play Services, efímero y limpio, canal autenticado, sin secretos en logs |

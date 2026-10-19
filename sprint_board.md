@@ -14,6 +14,8 @@
 
 ---
 
+---
+
 ## 🏗️ In Progress
 _(vacío)_
 
@@ -25,6 +27,12 @@ _(vacío)_
 ---
 
 ## ✅ Done
+- [x] **HU-ORCH-13: Login por Código QR y Vinculación Remota de Dispositivos (Android TV & Móvil)** `[Responsables: DeepSeek Dev, Claude PM/QA & Antigravity PO]`
+  - Contrato formalizado en `SDD-tv-qr-pairing.md` bajo las invariantes `PAIR-INV-1` a `PAIR-INV-8`.
+  - Protocolo criptográfico soberano `orchard-pair-v1` (ECDH P-256 + HKDF + AES-256-GCM) sin fuga a servidores externos, canal autenticado por huella SHA-256 en QR o SAS numérico de 6 dígitos.
+  - Servidor efímero en la TV (`TvPairingServer`) en IPv4 privada, máx 5 fallos, timeout 300 s, mDNS `_orchard-pair._tcp` (`PairingAdvertiser`), pantalla TV `TvQrLoginScreen` (Canvas QR, timer, SAS y fallback web a `TvRoutes.LOGIN_WEB`) y diálogo `TvPairingConfirmDialog`.
+  - Cliente móvil (`PairingClient`, `PairingDiscovery`), pantalla `PairWithTvScreen`, diálogo `PairConfirmDialog`, acceso en `SettingsConnections.kt` y receptor de deep link `orchard://pair` en `MainActivity.kt`.
+  - Suite de pruebas unitarias 100% pasando en verde (43/43 tests JVM en 5 suites).
 - [x] **HU-ORCH-11b: Paridad Funcional Total de Android TV con Móvil (Cuentas, Ajustes, Onboarding, Video y Social)** `[Responsables: DeepSeek Dev, Claude PM/QA & Antigravity PO]`
   - Conexión de `SettingsScreen` real (todas las secciones: cuentas, calidad de streaming, autoplay, crossfade, caché, descargas, actualizaciones y diseño de inicio).
   - Onboarding `WelcomeScreen` en primer arranque para TV y rutas de autenticación nativas (`NativeLoginScreen` para YouTube Music, `SpotifyLoginScreen`, `QobuzLoginScreen`, selector de cuenta).

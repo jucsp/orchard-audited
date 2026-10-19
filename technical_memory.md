@@ -97,3 +97,14 @@ Rama `integrate/hu-orch-11`, contrato `SDD-android-tv.md`. Informe QA en `AUDIT.
 - **Build:** `-PorchardTvBuild=true` cambia solo las ABI de release a `armeabi-v7a` + `arm64-v8a` (y agrega `armv7` a Earmark). `release.yml` compila el teléfono, copia, compila TV y publica `Orchard-AndroidTV-arm.apk`. En 32 bits no hay LiteRT (traducción desactivada) ni ORT reducido.
 - **Actualizador:** TV acepta solo `Orchard-AndroidTV-arm.apk` (también en un manifest); teléfono prefiere `Orchard-Android-arm64-v8a.apk` y nunca toma el de TV. Sin `sha256` cuando el APK sale de los assets (H-TV1, pendiente del propietario).
 - **Pendiente:** T0 (ABI real del Chromecast con Google TV, `kopus`/Earmark en `armv7`), T10, T11, T12, T13, Q2, Q4, H-TV1 y build/tests en Actions.
+
+## 10. Vinculación TV ↔ Teléfono por QR y LAN (HU-ORCH-13)
+Rama `integrate/hu-orch-13-tv-qr-login`, contrato `SDD-tv-qr-pairing.md`.
+- **Problema de Negocio:** En Android TV, el inicio de sesión web en WebView es inutilizable con control remoto (D-pad) cuando Google pide verificación en dos pasos (2FA, passkeys, selección de método alternativo).
+- **Solución:** Vinculación remota local TV ↔ Teléfono. La TV muestra código QR y código de comparación SAS (`ddd-ddd`); el teléfono transfiere la sesión activa de YouTube Music (y opcional Spotify `sp_dc`) de forma cifrada de extremo a extremo por la red local.
+- **Protocolo `orchard-pair-v1` (`dev.sfg.orchard.mobile.pairing`):**
+  - Criptografía: Par efímero ECDH P-256 (`secp256r1`), HKDF-SHA256, sobre AES-256-GCM con AAD sobre transcripción `th`.
+  - Invariantes de Seguridad: PAIR-INV-1 (cero fuga externa, solo IPs privadas RFC 1918), PAIR-INV-2 (consentimiento explícito en ambos lados con foco inicial en Cancelar), PAIR-INV-3 (cero SDKs propietarios / Firebase, QR con `zxing:core:3.5.3`), PAIR-INV-4 (servidor local efímero con timeout de 300 s, máx 5 fallos, puerto cerrado tras completar), PAIR-INV-5 (canal autenticado por huella SHA-256 en QR o SAS), PAIR-INV-6 (entradas acotadas, máx 64 KiB), PAIR-INV-7 (cero secretos en logs o `toString()`), PAIR-INV-8 (archivos < 500 líneas, AGPL).
+  - TV: `TvPairingServer` en puerto efímero, anuncio mDNS `_orchard-pair._tcp` (`PairingAdvertiser`), pantalla `TvQrLoginScreen` (Canvas QR, timer, SAS, fallback web a `TvRoutes.LOGIN_WEB`) y diálogo `TvPairingConfirmDialog`.
+  - Teléfono: `PairingDiscovery`, `PairingClient`, pantalla `PairWithTvScreen`, diálogo `PairConfirmDialog`, fila en `SettingsConnections.kt` y enrutamiento deep link `orchard://pair` en `MainActivity.kt`.
+- **Verificación QA:** 43/43 tests unitarios JVM pasando en verde (`PairingCryptoTest` 10/10, `PairingMessagesTest` 9/9, `PairingUriTest` 8/8, `TvPairingServerTest` 11/11, `PairingClientTest` 5/5).

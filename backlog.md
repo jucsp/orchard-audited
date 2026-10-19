@@ -87,3 +87,17 @@ Fork de auditoría de seguridad sobre `sfg5453/orchard` para mantener un control
   - Descubrimiento, conexión, reproducción, pausa, seek, volumen del dispositivo y avance de cola en un Chromecast/Google TV y un Nest Mini reales.
   - Sin tráfico de cast al arrancar la app (H15).
 
+### HU-ORCH-13: Login por Código QR y Vinculación Remota de Dispositivos (Android TV & Móvil)
+- **ID:** HU-ORCH-13
+- **Prioridad:** Alta
+- **Estimación:** 5 SP
+- **Contrato:** `SDD-tv-qr-pairing.md` (invariantes `PAIR-INV-1` a `PAIR-INV-8`).
+- **Contexto de Negocio:**
+  En Android TV, el inicio de sesión web en WebView resulta inutilizable con control remoto (D-pad) al solicitar verificación en 2 pasos de Google (2FA, passkeys, llaves de seguridad). Para resolverlo definitivamente, se implementa vinculación remota: el televisor despliega un código QR y código SAS de 6 dígitos; la app móvil de Orchard (o escaneo de QR) transfiere la sesión activa de forma instantánea, cifrada de extremo a extremo (ECDH P-256 + AES-256-GCM) y con confirmación explícita del usuario.
+- **Criterios de Aceptación:**
+  - `TvQrLoginScreen` en Android TV con código QR de alto contraste (zxing core), código SAS legible, temporizador y opción de fallback a WebView (`LOGIN_WEB`).
+  - Servidor de emparejamiento efímero local (`TvPairingServer`) en la TV con cifrado simétrico AES-256-GCM, clave efímera acordada por ECDH P-256 autenticada por huella SHA-256 en el QR y token de 128 bits.
+  - Anuncio mDNS / NSD `_orchard-pair._tcp` en red local para detección automática desde la app móvil.
+  - Opción "Vincular con Android TV" en `SettingsScreen` móvil con confirmación explícita del usuario antes de transferir `YouTubeSession` (y Spotify opcional).
+  - Cero dependencias privativas (sin Google Play Services / Firebase), apagado automático del servidor local tras completar o cancelar, y tests unitarios de emparejamiento en verde.
+
