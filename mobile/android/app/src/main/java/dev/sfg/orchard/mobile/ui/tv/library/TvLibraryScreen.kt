@@ -158,7 +158,7 @@ private fun TvLibraryGrid(
                     Modifier
                         .width(123.dp)
                         .tvClickable(TvFocusStyle.Card, CardShape, onFocus = onContentFocus) {
-                            onOpenDetail(dev.sfg.orchard.mobile.catalog.PlaylistActions.LIKED_MUSIC_PLAYLIST_ID)
+                            onOpenDetail(dev.sfg.orchard.mobile.catalog.CatalogRepository.LIKED_MUSIC)
                         },
                 ) {
                     Box(

@@ -46,8 +46,8 @@ sealed interface UpdateState {
 
 class UpdateManager(
     private val context: Context,
-    private val isBetaEnabled: () -> Boolean = { false },
     private val isTv: Boolean = isTvDevice(context),
+    private val isBetaEnabled: () -> Boolean = { false },
 ) {
 
     private val baseUrl = "https://github.com/jucsp/orchard-audited/releases/latest/download"
