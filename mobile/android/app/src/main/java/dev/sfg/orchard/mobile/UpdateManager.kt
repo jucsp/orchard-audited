@@ -13,6 +13,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import dev.sfg.orchard.connect.BuildConfig
+import dev.sfg.orchard.mobile.ui.tv.isTvDevice
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -46,6 +47,7 @@ sealed interface UpdateState {
 class UpdateManager(
     private val context: Context,
     private val isBetaEnabled: () -> Boolean = { false },
+    private val isTv: Boolean = isTvDevice(context),
 ) {
 
     private val baseUrl = "https://github.com/jucsp/orchard-audited/releases/latest/download"
@@ -90,7 +92,7 @@ class UpdateManager(
 
         if (connection.responseCode == HttpURLConnection.HTTP_OK) {
             val response = connection.inputStream.bufferedReader().use { it.readText() }
-            parseUpdateMetadata(response)
+            parseUpdateMetadata(response).takeIf { manifestFitsDevice(it, isTv) }
         } else {
             null
         }
@@ -106,7 +108,7 @@ class UpdateManager(
 
         if (connection.responseCode == HttpURLConnection.HTTP_OK) {
             val response = connection.inputStream.bufferedReader().use { it.readText() }
-            val meta = parseGitHubReleasesMetadata(response)
+            val meta = parseGitHubReleasesMetadata(response, isTv)
             if (meta != null) return@runCatching meta
         }
 
@@ -120,6 +122,26 @@ class UpdateManager(
 
     companion object {
         private const val TAG = "UpdateManager"
+        const val PHONE_APK = "Orchard-Android-arm64-v8a.apk"
+        const val TV_APK = "Orchard-AndroidTV-arm.apk"
+
+        /** A manifest names one APK; a TV only takes it when that APK is the TV build. */
+        fun manifestFitsDevice(metadata: MobileUpdateMetadata, isTv: Boolean): Boolean =
+            !isTv || metadata.apkUrl.substringAfterLast('/') == TV_APK
+
+        /**
+         * The APK asset for this kind of device. A TV takes only [TV_APK]; a phone prefers
+         * [PHONE_APK] and otherwise the first APK that is not the TV build.
+         */
+        fun selectApkUrl(assets: List<Pair<String, String>>, isTv: Boolean): String? {
+            val apks = assets.filter { (name, _) -> name.endsWith(".apk", ignoreCase = true) }
+            return if (isTv) {
+                apks.firstOrNull { (name, _) -> name == TV_APK }?.second
+            } else {
+                (apks.firstOrNull { (name, _) -> name == PHONE_APK } ?: apks.firstOrNull { (name, _) -> name != TV_APK })
+                    ?.second
+            }
+        }
 
         fun parseUpdateMetadata(jsonString: String): MobileUpdateMetadata {
             val json = JSONObject(jsonString)
@@ -136,6 +158,7 @@ class UpdateManager(
 
         fun parseGitHubReleasesMetadata(
             releasesJson: String,
+            isTv: Boolean = false,
             fetchManifest: (String) -> String? = { url ->
                 runCatching {
                     val conn = URL(url).openConnection() as HttpURLConnection
@@ -156,7 +179,7 @@ class UpdateManager(
 
                 val assets = releaseObj.optJSONArray("assets") ?: JSONArray()
                 var manifestUrl: String? = null
-                var apkUrl: String? = null
+                val named = mutableListOf<Pair<String, String>>()
 
                 for (j in 0 until assets.length()) {
                     val asset = assets.getJSONObject(j)
@@ -164,15 +187,17 @@ class UpdateManager(
                     val downloadUrl = asset.optString("browser_download_url", "")
                     if (name.equals("latest-android.json", ignoreCase = true)) {
                         manifestUrl = downloadUrl
-                    } else if (name.endsWith(".apk", ignoreCase = true) && apkUrl == null) {
-                        apkUrl = downloadUrl
+                    } else {
+                        named += name to downloadUrl
                     }
                 }
+                val apkUrl = selectApkUrl(named, isTv)
 
                 if (manifestUrl != null) {
                     val manifestContent = fetchManifest(manifestUrl)
                     if (manifestContent != null) {
-                        return parseUpdateMetadata(manifestContent)
+                        val manifest = parseUpdateMetadata(manifestContent)
+                        if (manifestFitsDevice(manifest, isTv)) return manifest
                     }
                 }
 

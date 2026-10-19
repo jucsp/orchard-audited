@@ -194,4 +194,88 @@ class UpdateManagerTest {
 
         org.junit.Assert.assertNull(metadata)
     }
+
+    private fun releaseWith(vararg assets: String, manifest: Boolean = false): String {
+        val entries = assets.map { name ->
+            """{"name": "$name", "browser_download_url": "https://github.com/downloads/$name"}"""
+        } + if (manifest) {
+            listOf("""{"name": "latest-android.json", "browser_download_url": "https://github.com/downloads/latest-android.json"}""")
+        } else {
+            emptyList()
+        }
+        return """[{"tag_name": "v2.1.0", "body": "", "published_at": "", "assets": [${entries.joinToString(",")}]}]"""
+    }
+
+    @Test
+    fun phoneTakesThePhoneApkWhenBothArePublished() {
+        val metadata = UpdateManager.parseGitHubReleasesMetadata(
+            releasesJson = releaseWith(UpdateManager.TV_APK, UpdateManager.PHONE_APK),
+            isTv = false,
+            fetchManifest = { null },
+        )
+
+        assertEquals("https://github.com/downloads/${UpdateManager.PHONE_APK}", metadata?.apkUrl)
+    }
+
+    @Test
+    fun phoneNeverFallsBackToTheTvApk() {
+        val metadata = UpdateManager.parseGitHubReleasesMetadata(
+            releasesJson = releaseWith(UpdateManager.TV_APK),
+            isTv = false,
+            fetchManifest = { null },
+        )
+
+        org.junit.Assert.assertNull(metadata)
+    }
+
+    @Test
+    fun tvTakesTheTvApkWhenBothArePublished() {
+        val metadata = UpdateManager.parseGitHubReleasesMetadata(
+            releasesJson = releaseWith(UpdateManager.PHONE_APK, UpdateManager.TV_APK),
+            isTv = true,
+            fetchManifest = { null },
+        )
+
+        assertEquals("https://github.com/downloads/${UpdateManager.TV_APK}", metadata?.apkUrl)
+    }
+
+    @Test
+    fun tvGetsNoOfferWithoutTheTvApk() {
+        val metadata = UpdateManager.parseGitHubReleasesMetadata(
+            releasesJson = releaseWith(UpdateManager.PHONE_APK, "Orchard-2.1.0.apk"),
+            isTv = true,
+            fetchManifest = { null },
+        )
+
+        org.junit.Assert.assertNull(metadata)
+    }
+
+    @Test
+    fun tvSkipsAManifestThatPointsAtThePhoneApk() {
+        val phoneManifest = """
+            {"version": "2.1.0", "apkUrl": "https://github.com/downloads/${UpdateManager.PHONE_APK}", "sha256": "phonehash"}
+        """.trimIndent()
+
+        val metadata = UpdateManager.parseGitHubReleasesMetadata(
+            releasesJson = releaseWith(UpdateManager.PHONE_APK, UpdateManager.TV_APK, manifest = true),
+            isTv = true,
+            fetchManifest = { phoneManifest },
+        )
+
+        assertEquals("https://github.com/downloads/${UpdateManager.TV_APK}", metadata?.apkUrl)
+        assertEquals("", metadata?.sha256)
+    }
+
+    @Test
+    fun manifestFitsTheDeviceByExactApkName() {
+        val tv = MobileUpdateMetadata(version = "2.1.0", apkUrl = "https://x/${UpdateManager.TV_APK}")
+        val phone = MobileUpdateMetadata(version = "2.1.0", apkUrl = "https://x/${UpdateManager.PHONE_APK}")
+        val blank = MobileUpdateMetadata(version = "2.1.0")
+
+        org.junit.Assert.assertTrue(UpdateManager.manifestFitsDevice(tv, isTv = true))
+        org.junit.Assert.assertFalse(UpdateManager.manifestFitsDevice(phone, isTv = true))
+        org.junit.Assert.assertFalse(UpdateManager.manifestFitsDevice(blank, isTv = true))
+        org.junit.Assert.assertTrue(UpdateManager.manifestFitsDevice(phone, isTv = false))
+        org.junit.Assert.assertTrue(UpdateManager.manifestFitsDevice(blank, isTv = false))
+    }
 }
