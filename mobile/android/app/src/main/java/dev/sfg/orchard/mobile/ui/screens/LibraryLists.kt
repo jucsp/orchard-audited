@@ -198,6 +198,7 @@ internal val LibraryFilter.label: String
         LibraryFilter.ARTISTS -> "Artists"
         LibraryFilter.ALBUMS -> "Albums"
         LibraryFilter.SONGS -> "Songs"
+        LibraryFilter.PODCASTS -> "Podcasts"
         LibraryFilter.RECENT -> "Recent"
         LibraryFilter.DOWNLOADS -> "Downloads"
         LibraryFilter.LOCAL -> "Local"

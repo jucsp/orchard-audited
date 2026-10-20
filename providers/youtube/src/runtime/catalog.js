@@ -26,6 +26,7 @@ import { createArtistCatalog } from '../catalog/artistCatalog.js';
 import { createSearchUtils } from '../catalog/searchUtils.js';
 import { createMainFeeds } from '../catalog/mainFeeds.js';
 import { musicBrowseRequests } from '../catalog/musicBrowse.js';
+import { normalizePodcastDetail } from '../catalog/podcastCatalog.js';
 import { shouldShowHomeItem, shouldShowMusicItem } from '../catalog/musicItemTypes.js';
 import {
   asText,
@@ -55,7 +56,8 @@ const musicSearchParams = {
   album: 'EgWKAQIYAQ%3D%3D',
   video: 'EgWKAQIQAQ%3D%3D',
   artist: 'EgWKAQIgAQ%3D%3D',
-  playlist: 'EgWKAQIoAQ%3D%3D'
+  playlist: 'EgWKAQIoAQ%3D%3D',
+  podcast: 'EgWKAQJQAQ%3D%3D'
 };
 
 const normalizers = createBrowseNormalizers({
@@ -187,7 +189,7 @@ export async function loadSearch(payload = {}) {
   if (!query) return { filters: [], sections: [] };
 
   const requestedFilter = clean(payload.filter).toLowerCase();
-  const filter = ['all', 'songs', 'videos', 'albums', 'artists', 'playlists'].includes(requestedFilter)
+  const filter = ['all', 'songs', 'videos', 'albums', 'artists', 'playlists', 'podcasts'].includes(requestedFilter)
     ? requestedFilter
     : 'all';
   const collection = {
@@ -209,7 +211,7 @@ export async function loadSearch(payload = {}) {
   // shelves explicitly; an empty seat is not a design feature.
   const results = await Promise.allSettled([
     searchUtils.searchCatalog(collection, query, 'all'),
-    ...['videos', 'albums', 'playlists'].map(category =>
+    ...['videos', 'albums', 'playlists', 'podcasts'].map(category =>
       searchUtils.searchCatalog(collection, query, category))
   ]);
   const available = results.filter(result => result.status === 'fulfilled').map(result => result.value);
@@ -280,12 +282,13 @@ export async function loadLibrary(payload = {}) {
   // Share the landing page's category endpoints. Recommendations do not get
   // to sneak into the library wearing a fake membership card.
   const landing = createBrowseRequest(session)({ browseId: 'FEmusic_library_landing' });
-  const categories = ['artists', 'albums', 'songs', 'playlists'];
+  const categories = ['artists', 'albums', 'songs', 'playlists', 'podcasts'];
   const results = await Promise.allSettled([
     feeds.fetchBrowserSubscribedArtists(),
     landing.then(page => feeds.fetchMusicLibraryCategory(null, 'Albums', page)),
     landing.then(page => feeds.fetchMusicLibraryCategory(null, 'Songs', page)),
-    loadPlaylists(payload)
+    loadPlaylists(payload),
+    landing.then(page => feeds.fetchMusicLibraryCategory(null, 'Podcasts', page))
   ]);
   if (results.every(result => result.status === 'rejected')) throw results[0].reason;
 
@@ -581,6 +584,7 @@ export async function loadBrowse(payload = {}) {
   const params = clean(payload.params);
   const request = createBrowseRequest(sessionFrom(payload), { allowGuestResponse: true });
   const data = await request({ browseId, ...(params ? { params } : {}) });
+  if (browseId.startsWith('MPSP')) return normalizePodcastDetail(data, browseId);
   const sections = normalizers.rawSectionList(data)
     .map(normalizers.normalizeBrowseSection)
     .filter((section) => section.items.length > 0);

@@ -203,9 +203,10 @@ data class SearchResults(
     val albums: List<Album> = emptyList(),
     val artists: List<Artist> = emptyList(),
     val playlists: List<Playlist> = emptyList(),
+    val podcasts: List<Playlist> = emptyList(),
 ) {
     val isEmpty: Boolean
-        get() = tracks.isEmpty() && videos.isEmpty() && albums.isEmpty() && artists.isEmpty() && playlists.isEmpty()
+        get() = tracks.isEmpty() && videos.isEmpty() && albums.isEmpty() && artists.isEmpty() && playlists.isEmpty() && podcasts.isEmpty()
 }
 
 /** Home shelves plus the artists the listener follows, as desktop shows them. */

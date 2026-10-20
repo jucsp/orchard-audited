@@ -89,6 +89,7 @@ export function createSearchUtils({
     if (/playlists?/.test(source) || type === 'playlist') return 'playlists';
     if (/videos?/.test(source) || type === 'video') return 'videos';
     if (/songs?|tracks?/.test(source) || type === 'song' || type === 'track') return 'songs';
+    if (/podcasts?|episodes?/.test(source) || type === 'podcast' || type === 'podcast_episode') return 'podcasts';
     if (type === 'non music track') return 'videos';
     return '';
   }
@@ -99,7 +100,8 @@ export function createSearchUtils({
       videos: [],
       albums: [],
       artists: [],
-      playlists: []
+      playlists: [],
+      podcasts: []
     };
 
     for (const section of search.contents || []) {
@@ -133,7 +135,8 @@ export function createSearchUtils({
       ['videos', 'Videos'],
       ['albums', 'Albums'],
       ['artists', 'Artists'],
-      ['playlists', 'Playlists']
+      ['playlists', 'Playlists'],
+      ['podcasts', 'Podcasts']
     ];
     const contentBuckets = search.contents?.length ? normalizeSearchContents(search) : null;
     const normalizedSections = sections
@@ -167,7 +170,7 @@ export function createSearchUtils({
   }
 
   function mergeSearchResults(primary = { sections: [] }, supplements = []) {
-    const sectionOrder = ['songs', 'videos', 'albums', 'artists', 'playlists'];
+    const sectionOrder = ['songs', 'videos', 'albums', 'artists', 'playlists', 'podcasts'];
     const sections = new Map(
       (primary.sections || []).map((section) => [section.key, { ...section, items: [...(section.items || [])] }])
     );

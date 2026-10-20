@@ -117,6 +117,10 @@ fun JSONObject.providerItem(): CatalogItem? {
     val credit = text("artist").ifEmpty { creditFrom(subtitle) }
     val type = text("type")
     return when {
+        type == "podcast_episode" -> providerTrack()?.let { CatalogItem.Song(it) }
+        type == "podcast" || browseId.startsWith("MPSP") ->
+            CatalogItem.Collection(Playlist(browseId, title, credit.ifEmpty { "Podcast" }, art,
+                explicit = optBoolean("explicit")))
         type == "artist" || type == "library_artist" || browseId.startsWith("UC") ->
             CatalogItem.Performer(Artist(browseId, title, art, subtitle))
         type == "album" || browseId.startsWith("MPRE") ->
@@ -157,6 +161,7 @@ fun JSONObject.providerSearch(): SearchResults {
         albums = items("albums").filterIsInstance<CatalogItem.Record>().map { it.album },
         artists = items("artists").filterIsInstance<CatalogItem.Performer>().map { it.artist },
         playlists = items("playlists").filterIsInstance<CatalogItem.Collection>().map { it.playlist },
+        podcasts = items("podcasts").filterIsInstance<CatalogItem.Collection>().map { it.playlist },
     )
 }
 

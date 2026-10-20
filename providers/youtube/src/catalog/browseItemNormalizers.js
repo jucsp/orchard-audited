@@ -19,6 +19,7 @@
 
 // Normalizes individual raw browse renderers into Orchard catalog items.
 import { isUploadedMusicItem } from './musicItemTypes.js';
+import { podcastEpisode } from './podcastCatalog.js';
 export function createBrowseItemNormalizers({
   asText,
   bestThumbnail,
@@ -144,15 +145,17 @@ export function createBrowseItemNormalizers({
       id: watchEndpoint?.videoId || null,
       browseId: browsePayload?.browseId || null,
       browsePayload: browsePayload ? { ...browsePayload } : null,
-      type: hasVideo
-        ? (musicVideoType === 'MUSIC_VIDEO_TYPE_ATV' ? 'track' : 'video')
-        : pageType === 'MUSIC_PAGE_TYPE_ARTIST'
-        ? 'artist'
-        : pageType === 'MUSIC_PAGE_TYPE_ALBUM'
-          ? 'album'
-          : pageType === 'MUSIC_PAGE_TYPE_PLAYLIST'
-            ? 'playlist'
-            : 'media',
+      type: pageType === 'MUSIC_PAGE_TYPE_PODCAST_SHOW_DETAIL_PAGE' || browsePayload?.browseId?.startsWith('MPSP')
+        ? 'podcast'
+        : hasVideo
+          ? (musicVideoType === 'MUSIC_VIDEO_TYPE_ATV' ? 'track' : 'video')
+          : pageType === 'MUSIC_PAGE_TYPE_ARTIST'
+            ? 'artist'
+            : pageType === 'MUSIC_PAGE_TYPE_ALBUM'
+              ? 'album'
+              : pageType === 'MUSIC_PAGE_TYPE_PLAYLIST'
+                ? 'playlist'
+                : 'media',
       musicVideoType,
       isAudioOnly: musicVideoType === 'MUSIC_VIDEO_TYPE_ATV',
       title: asText(renderer.title) || 'Untitled',
@@ -183,6 +186,7 @@ export function createBrowseItemNormalizers({
   function normalizeRawBrowseItem(item, index = 0) {
     if (item?.musicResponsiveListItemRenderer) return normalizeRawResponsiveListItem(item, index);
     if (item?.musicTwoRowItemRenderer) return normalizeRawTwoRowItem(item, index);
+    if (item?.musicMultiRowListItemRenderer) return podcastEpisode(item, index);
     return null;
   }
 

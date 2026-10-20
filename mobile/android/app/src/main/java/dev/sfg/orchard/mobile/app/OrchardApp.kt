@@ -362,6 +362,7 @@ internal fun LibraryFilter.sourceTitle(): String = when (this) {
     LibraryFilter.ARTISTS -> "Your artists"
     LibraryFilter.ALBUMS -> "Your albums"
     LibraryFilter.SONGS -> "Liked songs"
+    LibraryFilter.PODCASTS -> "Your podcasts"
     LibraryFilter.RECENT -> "Recently played"
     LibraryFilter.DOWNLOADS -> "Downloads"
     LibraryFilter.LOCAL -> "Local files"

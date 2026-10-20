@@ -65,6 +65,7 @@ private val filters = listOf(
     LibraryFilter.ARTISTS,
     LibraryFilter.ALBUMS,
     LibraryFilter.SONGS,
+    LibraryFilter.PODCASTS,
     LibraryFilter.RECENT,
     LibraryFilter.DOWNLOADS,
 )
@@ -148,6 +149,7 @@ private fun LibrarySnapshot.isEmptyFor(filter: LibraryFilter): Boolean = when (f
     LibraryFilter.ARTISTS -> savedArtists.isEmpty()
     LibraryFilter.ALBUMS -> savedAlbums.isEmpty()
     LibraryFilter.SONGS -> likedTracks.isEmpty()
+    LibraryFilter.PODCASTS -> savedPodcasts.isEmpty()
     LibraryFilter.RECENT -> recentlyPlayed.isEmpty()
     else -> false
 }
@@ -157,6 +159,7 @@ private fun emptyMessage(filter: LibraryFilter): String = when (filter) {
     LibraryFilter.ARTISTS -> "Todavía no sigues a ningún artista."
     LibraryFilter.ALBUMS -> "Todavía no has guardado ningún álbum."
     LibraryFilter.SONGS -> "Marca canciones con 'Me gusta' para verlas aquí."
+    LibraryFilter.PODCASTS -> "Todavía no has guardado ningún podcast en tu biblioteca."
     LibraryFilter.RECENT -> "Aún no has reproducido ninguna canción."
     else -> "No hay elementos que mostrar aquí."
 }
@@ -166,6 +169,7 @@ private fun LibraryFilter.label(): String = when (this) {
     LibraryFilter.ARTISTS -> "Artistas"
     LibraryFilter.ALBUMS -> "Álbumes"
     LibraryFilter.SONGS -> "Canciones"
+    LibraryFilter.PODCASTS -> "Pódcasts"
     LibraryFilter.RECENT -> "Recientes"
     LibraryFilter.DOWNLOADS -> "Descargas"
     LibraryFilter.LOCAL -> "Local"
@@ -238,6 +242,9 @@ private fun TvLibraryGrid(
             }
             LibraryFilter.ALBUMS -> items(library.savedAlbums, key = { "al_${it.id}" }) { album ->
                 CollectionCard(album.title, album.artworkUrl, onContentFocus) { onOpenDetail(album.id) }
+            }
+            LibraryFilter.PODCASTS -> items(library.savedPodcasts, key = { "pc_${it.id}" }) { podcast ->
+                CollectionCard(podcast.title, podcast.artworkUrl, onContentFocus) { onOpenDetail(podcast.id) }
             }
             // Recent entries are tracks, not collections: OK plays them.
             LibraryFilter.RECENT -> items(library.recentlyPlayed, key = { "re_${it.id}" }) { track ->

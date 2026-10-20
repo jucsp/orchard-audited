@@ -49,6 +49,7 @@ class LibraryCache(context: Context) {
                 savedAlbums = objects(root.optJSONArray("savedAlbums"), CatalogJson::album),
                 savedArtists = objects(root.optJSONArray("savedArtists"), CatalogJson::artist),
                 savedPlaylists = objects(root.optJSONArray("savedPlaylists"), CatalogJson::playlist),
+                savedPodcasts = objects(root.optJSONArray("savedPodcasts"), CatalogJson::playlist),
                 recentlyPlayed = CatalogJson.tracks(root.optJSONArray("recentlyPlayed")),
                 playCounts = countsMap,
             )
@@ -68,6 +69,7 @@ class LibraryCache(context: Context) {
             .put("savedAlbums", array(snapshot.savedAlbums, CatalogJson::album))
             .put("savedArtists", array(snapshot.savedArtists, CatalogJson::artist))
             .put("savedPlaylists", array(snapshot.savedPlaylists, CatalogJson::playlist))
+            .put("savedPodcasts", array(snapshot.savedPodcasts, CatalogJson::playlist))
             .put("recentlyPlayed", CatalogJson.tracks(snapshot.recentlyPlayed))
             .put("playCounts", countsObj)
         var output: FileOutputStream? = file.startWrite()

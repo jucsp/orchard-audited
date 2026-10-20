@@ -28,7 +28,7 @@ sealed interface LoadState<out T> {
     data class Error(val message: String, val cachedValueAvailable: Boolean = false) : LoadState<Nothing>
 }
 
-enum class LibraryFilter { PLAYLISTS, ARTISTS, ALBUMS, SONGS, RECENT, DOWNLOADS, LOCAL }
+enum class LibraryFilter { PLAYLISTS, ARTISTS, ALBUMS, SONGS, PODCASTS, RECENT, DOWNLOADS, LOCAL }
 
 enum class BuiltInHomeSection {
     YOUR_PLAYLISTS, SUBSCRIBED_ARTISTS, TOP_SONGS, RECOMMENDATIONS,
@@ -47,6 +47,7 @@ data class LibrarySnapshot(
     val savedAlbums: List<Album> = emptyList(),
     val savedArtists: List<Artist> = emptyList(),
     val savedPlaylists: List<Playlist> = emptyList(),
+    val savedPodcasts: List<Playlist> = emptyList(),
     val recentlyPlayed: List<Track> = emptyList(),
     val playCounts: Map<String, Int> = emptyMap(),
 ) {

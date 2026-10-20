@@ -129,12 +129,13 @@ test('catalog library loads saved categories and subscriptions independently of 
     return new Response(JSON.stringify(pages[key]), { status: 200 });
   }, () => invoke('catalog.library', { session }));
 
-  assert.deepEqual(library.sections.map(section => section.key), ['artists', 'albums', 'songs', 'playlists']);
-  assert.deepEqual(library.sections.map(section => section.error), ['', '', '', '']);
+  assert.deepEqual(library.sections.map(section => section.key), ['artists', 'albums', 'songs', 'playlists', 'podcasts']);
+  assert.deepEqual(library.sections.map(section => section.error), ['', '', '', '', '']);
   assert.deepEqual(library.sections[0].items.map(item => item.browseId), ['UC-artist']);
   assert.deepEqual(library.sections[1].items.map(item => [item.browseId, item.type]), [['MPRE-album', 'album']]);
   assert.deepEqual(library.sections[2].items.map(item => item.id), ['song-1', 'song-2']);
   assert.deepEqual(library.sections[3].items.map(item => item.browseId), ['VL-saved', 'VL-second']);
+  assert.deepEqual(library.sections[4].items, []);
   assert.equal(requests.filter(key => key === 'FEmusic_library_landing').length, 1);
   assert.equal(requests.includes('FEmusic_home'), false);
 });

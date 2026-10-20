@@ -29,6 +29,7 @@ import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.Podcasts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -118,6 +119,15 @@ fun LibraryScreen(
                 Icons.Rounded.Album,
                 if (searching) "No matching albums" else "No saved albums",
                 if (searching) "No albums matching \"$searchQuery\"" else "Albums you save will be available here.",
+                onOpenDetail,
+                browse.takeUnless { searching },
+            )
+            LibraryFilter.PODCASTS -> collections(
+                "Saved podcasts",
+                filterCatalogItems(library.savedPodcasts.map { CatalogItem.Collection(it) }, searchQuery),
+                Icons.Rounded.Podcasts,
+                if (searching) "No matching podcasts" else "No saved podcasts",
+                if (searching) "No podcasts matching \"$searchQuery\"" else "Podcasts you save will be available here.",
                 onOpenDetail,
                 browse.takeUnless { searching },
             )

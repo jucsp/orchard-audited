@@ -84,7 +84,7 @@ function podcastShow(item) {
   };
 }
 
-function podcastEpisode(item, index = 0, showTitle = '') {
+export function podcastEpisode(item, index = 0, showTitle = '') {
   const renderer = item?.musicMultiRowListItemRenderer;
   if (!renderer) return null;
   const watch = renderer.onTap?.watchEndpoint ||

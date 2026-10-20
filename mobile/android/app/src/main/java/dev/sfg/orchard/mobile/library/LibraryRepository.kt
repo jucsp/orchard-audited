@@ -148,9 +148,21 @@ class LibraryRepository(
         )
     }
 
+    /** Drops collections synced from the previous YouTube account; local history stays. */
+    fun clearAccountCollections() = update { current ->
+        current.copy(
+            likedTracks = emptyList(),
+            savedAlbums = emptyList(),
+            savedArtists = emptyList(),
+            savedPlaylists = emptyList(),
+            savedPodcasts = emptyList(),
+        )
+    }
+
     suspend fun refreshSignedInLibrary(): Result<Unit> = runCatching {
         val sections = catalog.library()
-        val items = sections.flatMap { it.items }
+        val podcastSection = sections.find { it.id == "library-podcasts" }
+        val items = sections.filterNot { it === podcastSection }.flatMap { it.items }
         val liked = runCatching { catalog.likedSongs().tracks }.getOrDefault(emptyList())
         // The landing page contains recent-activity shelves, not the complete saved collections.
         // Albums and playlists each have their own browse id, so use those and retain the landing
@@ -165,6 +177,9 @@ class LibraryRepository(
             .filterIsInstance<CatalogItem.Collection>()
             .map { it.playlist }
             .distinctBy(Playlist::id)
+        val savedPodcasts = podcastSection?.items.orEmpty().filterIsInstance<CatalogItem.Collection>()
+            .map { it.playlist }
+            .distinctBy(Playlist::id)
         val current = mutableLibrary.value
         val refreshed = current.copy(
             likedTracks = liked.ifEmpty { current.likedTracks },
@@ -177,6 +192,7 @@ class LibraryRepository(
                 .ifEmpty { items.filterIsInstance<CatalogItem.Collection>().map { it.playlist }.distinctBy(Playlist::id) }
                 .ifEmpty { current.savedPlaylists }
                 .map { remote -> remote.withCachedTracksFrom(current.savedPlaylists) },
+            savedPodcasts = savedPodcasts.ifEmpty { current.savedPodcasts },
         )
         mutableLibrary.value = refreshed
         cacheUpdates.trySend(refreshed).getOrThrow()

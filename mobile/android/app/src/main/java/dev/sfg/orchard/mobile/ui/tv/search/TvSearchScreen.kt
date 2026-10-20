@@ -231,10 +231,10 @@ private fun SearchResultsList(
             Triple(album.title, album.artworkUrl, album.id)
         } + results.artists.take(5).map { artist ->
             Triple(artist.name, artist.artworkUrl, artist.id)
-        }
+        } + results.podcasts.take(5).map { Triple(it.title, it.artworkUrl, it.id) }
         if (collections.isNotEmpty()) {
             item(key = "collections_caption") {
-                Text("ÁLBUMES Y ARTISTAS", style = TvTokens.tvEyebrow, modifier = Modifier.padding(top = 16.dp, bottom = 8.dp))
+                Text("ÁLBUMES, ARTISTAS Y PÓDCASTS", style = TvTokens.tvEyebrow, modifier = Modifier.padding(top = 16.dp, bottom = 8.dp))
             }
             item(key = "collections") {
                 CollectionGrid(collections, onContentFocus, onOpenDetail)

@@ -79,6 +79,7 @@ internal fun topResult(results: SearchResults, query: String): CatalogItem? {
     results.albums.firstOrNull()?.let { return CatalogItem.Record(it) }
     results.artists.firstOrNull()?.let { return CatalogItem.Performer(it) }
     results.playlists.firstOrNull()?.let { return CatalogItem.Collection(it) }
+    results.podcasts.firstOrNull()?.let { return CatalogItem.Collection(it) }
     return null
 }
 

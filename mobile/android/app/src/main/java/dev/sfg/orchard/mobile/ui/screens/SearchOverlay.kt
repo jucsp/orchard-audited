@@ -326,6 +326,7 @@ private fun LazyListScope.results(
     shelf("Albums", SearchScope.Albums, scope, onScope, results.albums.map { CatalogItem.Record(it) }, { it.album.artist }, false, actions)
     shelf("Artists", SearchScope.Artists, scope, onScope, results.artists.map { CatalogItem.Performer(it) }, { it.artist.subtitle }, true, actions)
     shelf("Playlists", SearchScope.Playlists, scope, onScope, results.playlists.map { CatalogItem.Collection(it) }, { it.playlist.author }, false, actions)
+    shelf("Podcasts", SearchScope.Playlists, scope, onScope, results.podcasts.map { CatalogItem.Collection(it) }, { it.playlist.author }, false, actions)
 }
 
 private fun <T : CatalogItem> LazyListScope.shelf(
