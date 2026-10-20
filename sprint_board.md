@@ -27,6 +27,17 @@ _(vacío)_
 ---
 
 ## ✅ Done
+- [x] **HU-ORCH-16: Corrección de pantalla negra en video musical y playhead continuo (Android TV)** `[Responsables: DeepSeek Dev & Claude PM/QA]`
+  - Abrir el video desde el reproductor activa el modo video antes de navegar a `TvRoutes.MUSIC_VIDEO`; salir con Atrás, Cerrar o "Volver a la canción" lo desactiva.
+  - La posición se conserva: `switchVideoSource` cambia la fuente sin reiniciar el reproductor.
+- [x] **HU-ORCH-17: Soporte Multicuentas en Android TV (YouTube Music multi-session, cambio en 1 clic y login QR)** `[Responsables: DeepSeek Dev & Claude PM/QA]`
+  - `SecureYouTubeSessionStore` guarda varias sesiones cifradas (`AndroidKeystoreCipher`) y migra la sesión única existente; id de cuenta = SHA-256 truncado a 16 bytes.
+  - `AccountSwitcher` cambia o elimina cuentas y vacía las colecciones sincronizadas de la cuenta anterior (`clearAccountCollections()`).
+  - Ajustes TV → "Cuentas guardadas": cuenta activa, cambio en 1 clic, eliminar, "+ Agregar otra cuenta" por QR (HU-ORCH-13) y "Cambiar de canal" para cuentas de marca.
+- [x] **HU-ORCH-18: Compatibilidad con Podcasts en YouTube Music (búsqueda y biblioteca)** `[Responsables: DeepSeek Dev & Claude PM/QA]`
+  - Proveedor JS: tipo `podcast` (`MPSP`), episodios `musicMultiRowListItemRenderer`, filtro de búsqueda `EgWKAQJQAQ%3D%3D`, categoría de biblioteca "Podcasts" y detalle con `normalizePodcastDetail`.
+  - Android: `LibraryFilter.PODCASTS`, `savedPodcasts` en `LibraryCache` separado de las playlists, filtro en biblioteca móvil y TV, sección en búsqueda.
+  - 187/187 tests del proveedor `providers/youtube` en verde.
 - [x] **HU-ORCH-14: Rediseño TV Etapa 2, Modo Nocturno y Salida con Control Remoto** `[Responsables: DeepSeek Dev, Claude PM/QA & Antigravity PO]`
   - Implementación completa de Etapa 2 en Compose para pantallas de 65" (safe area 48/27 dp, `ContentStartX` 116 dp, rail retráctil animado de 180 dp que empuja el contenido con `RailPush` de 136 dp y oscurece al 45%).
   - Fondos ambientales por rol con `TvAmbientBackdrop` (Carátula animada Kawarp equilibrada/vibrante, resplandor, oscuro y noche).

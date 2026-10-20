@@ -585,3 +585,49 @@ Sin tests: `CastDiscovery` (depende de `NsdManager`), `CastV2Player` y `CastCont
 | TV-INV-1 a 9 | ✅ | Safe area 48/27 dp, foco continuo con escalado y borde 2 dp, cero dependencias propietarias, compatibilidad baja gama, 31 archivos bajo 500 líneas con cabecera AGPL |
 | Actualizador | ✅ | Firma permanente única en CI, verificación de SHA-256, manifiestos separados y 16/16 tests unitarios pasando |
 
+
+### 5.15 Release del fork `v1.0.0-canary.9-audited.26`: video musical, multicuentas y podcasts (HU-ORCH-16, 17 y 18, 2026-10-19)
+
+- **Base upstream:** sin cambios, tag `v1.0.0-canary.9` → `aa900002d0541ce6bd7beab8d6011a05d181daaa`. No entra código nuevo del upstream; son cambios del fork sobre archivos del upstream, por eso esta entrada no agrega fila a la tabla de versiones.
+- **Rama:** `integrate/v1.0.0-canary.9-audited.26`, sobre `32c835f`. Cambios sin commit: 26 archivos modificados y `app/AccountSwitcher.kt` nuevo.
+- **Auditor:** Claude (PM/QA). Método: revisión estática del diff, `npm test` en `providers/youtube` y búsqueda de hosts, URLs y telemetría en las líneas agregadas.
+- **Veredicto: APROBADO por Claude QA**, condicionado a que la compilación Android pase en CI antes de publicar el release.
+- **Alcance:**
+  - HU-ORCH-16: `ui/tv/TvOrchardApp.kt` y `ui/tv/player/TvMusicVideoScreen.kt` (modo video activado al entrar y desactivado al salir; posición continua).
+  - HU-ORCH-17: `auth/SecureYouTubeSessionStore.kt`, `auth/AuthModels.kt`, `auth/NativeYouTubeAuthRepository.kt`, `app/AccountSwitcher.kt`, `app/OrchardViewModel.kt`, `library/LibraryRepository.kt`, `ui/tv/settings/TvSettingsPages.kt`, `TvSettingsRoutes.kt`, `TvSettingsScreen.kt`.
+  - HU-ORCH-18: `providers/youtube/src/catalog/{browseItemNormalizers,podcastCatalog,searchUtils}.js`, `src/runtime/catalog.js`, `test/catalogRuntime.test.js`, `model/CatalogModels.kt`, `model/UiModels.kt`, `youtube/ProviderModels.kt`, `library/LibraryCache.kt`, `ui/screens/{LibraryScreen,LibraryLists,SearchOverlay,SearchPanelRows}.kt`, `ui/tv/library/TvLibraryScreen.kt`, `ui/tv/search/TvSearchScreen.kt`, `app/OrchardApp.kt`.
+
+#### 5.15.1 Defectos corregidos en QA (sin commit)
+
+| # | Archivo | Defecto y efecto | Corrección |
+|---|---|---|---|
+| Q-33 | `podcastCatalog.js` | `podcastEpisode` se importaba sin estar exportado: `SyntaxError` al cargar el bundle y caída de todo el catálogo de YouTube | Exportado |
+| Q-34 | `app/OrchardApp.kt` | `LibraryFilter.sourceTitle()` sin rama `PODCASTS`: `when` no exhaustivo, no compila | Rama `PODCASTS` agregada |
+| Q-35 | `runtime/catalog.js` | El parámetro de podcasts (`EgWKAQIQ…`) era el filtro de videos | `EgWKAQJQAQ%3D%3D` (campo 10) |
+| Q-36 | `TvSettingsPages.kt` | "Cerrar sesión en cuenta activa" llamaba a `signOut()`, que borra todas las cuentas | Elimina solo la activa; opción aparte para cerrar todas |
+| Q-37 | `TvSettingsPages.kt`, `AuthModels.kt` | Cuenta activa detectada por nombre y claves `"a_$title"`: crash por clave duplicada con dos cuentas homónimas | Flag `isActive` (no persistido) y `keyId` único por cuenta |
+| Q-38 | `SecureYouTubeSessionStore.kt` | El id de cuenta contenía la cookie de login en claro y llegaba a la UI | Id = SHA-256 truncado a 16 bytes |
+| Q-39 | `LibraryRepository.kt`, `AccountSwitcher.kt` | La biblioteca de la cuenta A seguía visible en la B (`ifEmpty { current }`) | `clearAccountCollections()` al cambiar de cuenta activa |
+| Q-40 | `TvSettingsPages.kt` | Se perdió "Cambiar de cuenta" para cuentas de marca (`ACCOUNT_SWITCH`) | Restaurada como "Cambiar de canal" |
+| Q-41 | `LibraryCache.kt`, `LibraryRepository.kt` | Podcasts sin caché y mezclados con playlists | `savedPodcasts` persistido y sección separada |
+| Q-42 | `OrchardViewModel.kt` | 523 líneas, sobre el límite de `contributing.md` | Lógica de cuentas movida a `AccountSwitcher.kt`; 495 líneas |
+
+#### 5.15.2 Verificación
+
+| Punto | Resultado | Detalle |
+|---|---|---|
+| Tests `providers/youtube` | ✅ 187/187 | `npm test`, 0 fallos, re-ejecutado el 2026-10-19 |
+| Hosts del autor / `depot.sfg545.dev` | ✅ | Ninguna URL nueva en las líneas agregadas |
+| Telemetría y red en segundo plano | ✅ | Sin SDKs ni llamadas nuevas; búsqueda y biblioteca de podcasts solo a pedido del usuario (INV-6) |
+| Licencias | ✅ | Cabeceras AGPL-3.0-or-later de los 26 archivos sin tocar (ningún hunk en las primeras líneas); `AccountSwitcher.kt` con SPDX AGPL-3.0-or-later; `LICENSE*` y `package.json` sin cambios |
+| Secretos | ✅ | Sesiones cifradas con `AndroidKeystoreCipher`; la cookie no se usa como identificador fuera del almacén |
+| Zonas protegidas | ✅ | Updater, `TrustedKeys.cpp`, `release.yml` y `pairing/*` sin cambios; rutas nuevas registradas en `UPSTREAM.md` (HU-ORCH-17, 18) |
+| Límite de 500 líneas | ✅ | `OrchardViewModel.kt` 495, `AccountSwitcher.kt` 44 |
+| Compilación Kotlin y tests JVM | ⚠️ No verificado | Sin Android SDK en la máquina de QA; se exige `testDebugUnitTest` y `assembleRelease` verdes en CI antes de publicar |
+
+#### 5.15.3 Qué NO se verificó
+
+- Compilación Android ni tests JVM (ver arriba).
+- Filtro de podcasts `EgWKAQJQAQ%3D%3D` contra YouTube Music real.
+- Pruebas manuales en TV: cambio de cuenta, migración de la sesión única y video musical.
+- Observación abierta: si se inicia sesión con la sesión única antigua aún presente, esa credencial cifrada queda huérfana hasta el próximo `clearAll`.

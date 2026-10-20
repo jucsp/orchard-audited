@@ -128,3 +128,25 @@ Ramas `integrate/etapa2-tv-and-updates` → `audited`.
     - Generación automática en CI (`release.yml`) de los manifiestos `latest-android.json` y `latest-android-tv.json` con SHA-256 real de los APKs compilados.
     - `UpdateManager.kt` consulta `latest-android-tv.json` en TV (fallback al de teléfono) y valida con `manifestFitsDevice`.
     - 16/16 tests JVM pasando en verde en `UpdateManagerTest.kt`.
+
+## 12. Video musical continuo, multicuentas y podcasts (HU-ORCH-16, 17 y 18)
+Rama `integrate/v1.0.0-canary.9-audited.26`. Informe QA en `AUDIT.md` §5.15.
+
+- **HU-ORCH-16 (video musical en TV):**
+  - Causa de la pantalla negra: `TvRoutes.MUSIC_VIDEO` se abría sin activar el modo video, y el botón de salida llamaba a `onToggleMusicVideo(); onExit()` dejando el estado cruzado.
+  - `TvOrchardApp` llama a `viewModel.toggleMusicVideo()` solo si `!musicVideo.playing` antes de navegar; `exitVideo` lo desactiva al salir por Atrás, Cerrar o "Volver a la canción".
+  - El playhead es continuo porque `switchVideoSource` cambia la fuente del mismo reproductor; no hay `seek` ni reinicio.
+- **HU-ORCH-17 (multicuentas):**
+  - `SecureYouTubeSessionStore`: lista JSON en `youtube_accounts_v1` y cuenta activa en `youtube_active_account_id`, cifradas con `AndroidKeystoreCipher` (alias `orchard_youtube_oauth_v1`) y escritas con `commit()`. `ensureMigrated()` convierte la sesión única `youtube_credentials` en la primera cuenta y la borra.
+  - Id de cuenta: `SHA-256(loginCookie:dataSyncId:accountIndex)` truncado a 16 bytes en hex. La cookie nunca sale del almacén como identificador.
+  - `YouTubeAccount.isActive` se calcula al leer; no se guarda en disco.
+  - `NativeYouTubeAuthRepository` expone `accounts: StateFlow`, `switchAccount` y `removeAccount`; si se elimina la activa pasa a la siguiente o cierra sesión.
+  - `app/AccountSwitcher.kt` (fuera de `OrchardViewModel` por el límite de 500 líneas): si cambia la cuenta activa, `library.clearAccountCollections()` vacía likes, álbumes, artistas, playlists y podcasts sincronizados (el historial local queda), recarga la biblioteca y refresca Home.
+  - UI TV: "Cuentas guardadas" con `keyId` único por cuenta; "Cerrar sesión en cuenta activa" elimina solo esa cuenta y "Cambiar de canal" (`ACCOUNT_SWITCH`) se mantiene para cuentas de marca. Agregar cuenta reutiliza el login QR de HU-ORCH-13.
+- **HU-ORCH-18 (podcasts):**
+  - `browseItemNormalizers.js`: `MUSIC_PAGE_TYPE_PODCAST_SHOW_DETAIL_PAGE` o `browseId` `MPSP*` → tipo `podcast`; `musicMultiRowListItemRenderer` → `podcastEpisode` (exportado desde `podcastCatalog.js`).
+  - `searchUtils.js`: sección `podcasts` al final del orden de secciones.
+  - `runtime/catalog.js`: filtro `podcast: 'EgWKAQJQAQ%3D%3D'` (campo protobuf 10; `EgWKAQIQ…` es el de videos), categoría de biblioteca `Podcasts` y `loadBrowse` de `MPSP*` con `normalizePodcastDetail`.
+  - Android: sección `library-podcasts` separada de las playlists en `LibraryRepository`, `savedPodcasts` en `LibraryCache`, `LibraryFilter.PODCASTS` en móvil y TV; en `ProviderModels.kt` los episodios tienen prioridad sobre el prefijo `MPSP`.
+- **Verificación:** 187/187 tests en `providers/youtube` (`npm test`). Kotlin sin compilar en local (sin Android SDK); queda para CI.
+- **Pendiente:** compilación y `testDebugUnitTest` en CI; probar el filtro de podcasts contra YouTube real; sesión cifrada huérfana si se inicia sesión con la sesión única antigua aún presente (se limpia en el próximo `clearAll`).
