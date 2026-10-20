@@ -15,6 +15,7 @@ import androidx.compose.material.icons.rounded.SystemUpdate
 import dev.sfg.orchard.connect.BuildConfig
 import dev.sfg.orchard.mobile.UpdateState
 import dev.sfg.orchard.mobile.auth.AuthState
+import dev.sfg.orchard.mobile.auth.YouTubeAccount
 import dev.sfg.orchard.mobile.model.AudioQuality
 import dev.sfg.orchard.mobile.model.OrchardSettings
 import dev.sfg.orchard.mobile.settings.CacheManager
@@ -43,6 +44,7 @@ class TvSettingsModel(
     val settings: OrchardSettings,
     val ui: TvUiState,
     val auth: AuthState,
+    val accounts: List<YouTubeAccount> = emptyList(),
     val updateState: UpdateState,
     val cacheSizeBytes: Long,
     val downloadedBytes: Long,
@@ -53,6 +55,8 @@ class TvSettingsModel(
     val onSignIn: () -> Unit,
     val onSwitchAccount: () -> Unit,
     val onSignOut: () -> Unit,
+    val onSelectAccount: (String) -> Unit = {},
+    val onRemoveAccount: (String) -> Unit = {},
     val onWelcome: () -> Unit,
     val onHomeLayout: () -> Unit,
     val onClearCache: () -> Unit,
@@ -77,13 +81,35 @@ fun tvSettingsItems(category: TvSettingsCategory, m: TvSettingsModel): List<TvSe
 }
 
 private fun accountItems(m: TvSettingsModel): List<TvSettingItem> = buildList {
-    when (val auth = m.auth) {
-        is AuthState.SignedIn -> {
-            add(TvSettingItem.Action(auth.displayName ?: "Tu cuenta", "Cuenta de YouTube Music conectada", m.onSwitchAccount))
-            add(TvSettingItem.Action("Cambiar de cuenta", null, m.onSwitchAccount))
-            add(TvSettingItem.Action("Cerrar sesión", null, m.onSignOut, destructive = true))
+    val active = m.accounts.firstOrNull { it.isActive }
+    if (m.accounts.isNotEmpty()) {
+        add(TvSettingItem.Header("Cuentas guardadas"))
+        for (account in m.accounts) {
+            if (account === active) {
+                add(TvSettingItem.Action("● ${account.displayName}", "Cuenta activa actual", onClick = {}, keyId = "active_${account.id}"))
+            } else {
+                add(TvSettingItem.Action("○ ${account.displayName}", "Cambiar a esta cuenta", onClick = { m.onSelectAccount(account.id) }, keyId = "select_${account.id}"))
+                add(
+                    TvSettingItem.Action(
+                        "Eliminar cuenta (${account.displayName})",
+                        "Quitar esta cuenta del televisor",
+                        onClick = { m.onRemoveAccount(account.id) },
+                        destructive = true,
+                        keyId = "remove_${account.id}",
+                    ),
+                )
+            }
         }
-        else -> add(TvSettingItem.Action("Iniciar sesión", "Escanea un código QR con tu teléfono", m.onSignIn))
+        add(TvSettingItem.Action("+ Agregar otra cuenta", "Conecta otra cuenta escaneando el código QR", onClick = m.onSignIn))
+        if (m.auth is AuthState.SignedIn) {
+            add(TvSettingItem.Action("Cambiar de canal", "Otro canal o cuenta de marca de la cuenta activa", m.onSwitchAccount))
+        }
+        active?.let { account ->
+            add(TvSettingItem.Action("Cerrar sesión en cuenta activa", null, onClick = { m.onRemoveAccount(account.id) }, destructive = true))
+        }
+        add(TvSettingItem.Action("Cerrar sesión en todas las cuentas", "Borra todas las cuentas guardadas del televisor", onClick = m.onSignOut, destructive = true))
+    } else {
+        add(TvSettingItem.Action("Iniciar sesión", "Escanea un código QR con tu teléfono", onClick = m.onSignIn))
     }
     add(TvSettingItem.Action("Asistente de bienvenida", "Vuelve a ver la configuración inicial", m.onWelcome))
 }

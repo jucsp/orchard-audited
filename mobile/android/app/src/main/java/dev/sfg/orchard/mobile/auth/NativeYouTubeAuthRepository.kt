@@ -39,6 +39,8 @@ class NativeYouTubeAuthRepository(
 ) : YouTubeSessionProvider {
     private val mutableState = MutableStateFlow<AuthState>(AuthState.Restoring)
     val state: StateFlow<AuthState> = mutableState.asStateFlow()
+    private val mutableAccounts = MutableStateFlow<List<YouTubeAccount>>(emptyList())
+    val accounts: StateFlow<List<YouTubeAccount>> = mutableAccounts.asStateFlow()
     private val generation = AtomicLong()
     private val sessionGuard = Any()
     @Volatile private var activeSession: YouTubeSession? = null
@@ -48,13 +50,15 @@ class NativeYouTubeAuthRepository(
     suspend fun restore() {
         val restoreGeneration = generation.get()
         try {
-            val restored = withContext(Dispatchers.IO) { store.load() }
+            val restored = withContext(Dispatchers.IO) { store.loadActive() }
+            val savedAccounts = withContext(Dispatchers.IO) { store.loadAllAccounts() }
             synchronized(sessionGuard) {
                 if (generation.get() != restoreGeneration) return
                 activeSession = restored
                 mutableState.value = restored?.let { AuthState.SignedIn(it.displayName, it.avatarUrl) }
                     ?: AuthState.SignedOut
             }
+            mutableAccounts.value = savedAccounts
             // Refresh in the background so a renamed account or new avatar catches up.
             if (restored != null) refreshProfile(restoreGeneration)
         } catch (error: Exception) {
@@ -102,7 +106,7 @@ class NativeYouTubeAuthRepository(
                     }
                     switchValidator(normalized)
                 }
-                val committed = withContext(Dispatchers.IO) { commitSession(normalized, signInGeneration) }
+                val committed = withContext(Dispatchers.IO) { commitAccount(normalized, signInGeneration) }
                 if (!committed) return@launch
                 refreshProfile(signInGeneration)
             } catch (error: Exception) {
@@ -146,10 +150,44 @@ class NativeYouTubeAuthRepository(
             )
             if (updated == current) return
             activeSession = updated
-            runCatching { store.save(updated) }
+            runCatching { store.saveAccount(updated, makeActive = true) }
                 .onFailure { Log.w(TAG, "Account profile could not be persisted", it) }
             mutableState.value = AuthState.SignedIn(updated.displayName, updated.avatarUrl)
+            mutableAccounts.value = runCatching { store.loadAllAccounts() }.getOrDefault(mutableAccounts.value)
         }
+    }
+
+    /** Switches to a saved account and refreshes its profile in the background. */
+    suspend fun switchAccount(accountId: String) {
+        val switched = withContext(Dispatchers.IO) { store.switchActiveAccount(accountId) }
+            ?: throw IllegalArgumentException("The selected account is no longer available.")
+        val savedAccounts = withContext(Dispatchers.IO) { store.loadAllAccounts() }
+        val switchGeneration = generation.incrementAndGet()
+        synchronized(sessionGuard) {
+            activeSession = switched
+            mutableState.value = AuthState.SignedIn(switched.displayName, switched.avatarUrl)
+        }
+        mutableAccounts.value = savedAccounts
+        refreshProfile(switchGeneration)
+    }
+
+    /** Removes a saved account; when the active one goes away, falls through to the next or signs out. */
+    suspend fun removeAccount(accountId: String) {
+        val removed = withContext(Dispatchers.IO) { store.removeAccount(accountId) }
+        if (!removed) return
+        val remaining = withContext(Dispatchers.IO) { store.loadAllAccounts() }
+        mutableAccounts.value = remaining
+        val nextActive = withContext(Dispatchers.IO) { store.loadActive() }
+        if (nextActive == null) {
+            signOut()
+            return
+        }
+        val switchGeneration = generation.incrementAndGet()
+        synchronized(sessionGuard) {
+            activeSession = nextActive
+            mutableState.value = AuthState.SignedIn(nextActive.displayName, nextActive.avatarUrl)
+        }
+        refreshProfile(switchGeneration)
     }
 
     fun signOut() {
@@ -157,7 +195,8 @@ class NativeYouTubeAuthRepository(
             generation.incrementAndGet()
             activeSession = null
             try {
-                store.clear()
+                store.clearAll()
+                mutableAccounts.value = emptyList()
                 mutableState.value = AuthState.SignedOut
             } catch (error: Exception) {
                 Log.w(TAG, "YouTube session could not be deleted", error)
@@ -171,12 +210,13 @@ class NativeYouTubeAuthRepository(
         }
     }
 
-    private fun commitSession(session: YouTubeSession, expectedGeneration: Long): Boolean =
+    private fun commitAccount(session: YouTubeSession, expectedGeneration: Long): Boolean =
         synchronized(sessionGuard) {
             if (generation.get() != expectedGeneration) return@synchronized false
-            store.save(session)
-            activeSession = session
-            mutableState.value = AuthState.SignedIn(session.displayName, session.avatarUrl)
+            val account = store.saveAccount(session, makeActive = true)
+            activeSession = account.session
+            mutableState.value = AuthState.SignedIn(account.session.displayName, account.session.avatarUrl)
+            mutableAccounts.value = store.loadAllAccounts()
             true
         }
 

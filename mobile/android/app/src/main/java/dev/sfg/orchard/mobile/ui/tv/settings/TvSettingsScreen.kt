@@ -89,8 +89,10 @@ sealed interface TvSettingItem {
         val subtitle: String?,
         val onClick: () -> Unit,
         val destructive: Boolean = false,
+        /** Distinguishes rows whose titles can repeat, such as accounts sharing a name. */
+        val keyId: String = title,
     ) : TvSettingItem {
-        override val key = "a_$title"
+        override val key = "a_$keyId"
     }
 
     /** Colour swatches; a null entry means "follow the app theme". */

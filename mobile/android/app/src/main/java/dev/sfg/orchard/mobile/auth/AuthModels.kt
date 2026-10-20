@@ -29,6 +29,17 @@ data class YouTubeSession(
     val avatarUrl: String = "",
 )
 
+/** A saved YouTube Music account on this TV, with the session needed to switch back to it. */
+data class YouTubeAccount(
+    val id: String,
+    val displayName: String = "YouTube Music",
+    val avatarUrl: String = "",
+    val session: YouTubeSession,
+    val lastUsedMs: Long = System.currentTimeMillis(),
+    /** Derived from the stored active id on load; never persisted. */
+    val isActive: Boolean = false,
+)
+
 fun interface YouTubeSessionProvider {
     fun session(): YouTubeSession?
 }

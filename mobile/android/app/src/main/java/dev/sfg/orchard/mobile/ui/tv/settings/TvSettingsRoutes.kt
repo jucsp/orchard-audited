@@ -38,6 +38,7 @@ fun NavGraphBuilder.tvSettingsRoutes(
         val context = LocalContext.current
         val settings by viewModel.settings.collectAsStateWithLifecycle()
         val auth by viewModel.auth.collectAsStateWithLifecycle()
+        val accounts by viewModel.accounts.saved.collectAsStateWithLifecycle()
         val updateState by viewModel.updateState.collectAsStateWithLifecycle()
         val cacheSizeBytes by viewModel.cacheSizeBytes.collectAsStateWithLifecycle()
         val totalBytesUsed by viewModel.totalBytesUsed.collectAsStateWithLifecycle()
@@ -50,6 +51,7 @@ fun NavGraphBuilder.tvSettingsRoutes(
             settings = settings,
             ui = ui,
             auth = auth,
+            accounts = accounts,
             updateState = updateState,
             cacheSizeBytes = cacheSizeBytes,
             downloadedBytes = totalBytesUsed,
@@ -60,6 +62,8 @@ fun NavGraphBuilder.tvSettingsRoutes(
             onSignIn = { nav.navigate(TvRoutes.LOGIN) },
             onSwitchAccount = { nav.navigate(TvRoutes.ACCOUNT_SWITCH) },
             onSignOut = viewModel::signOut,
+            onSelectAccount = viewModel.accounts::switchTo,
+            onRemoveAccount = viewModel.accounts::remove,
             onWelcome = { nav.navigate(TvRoutes.WELCOME) },
             onHomeLayout = { nav.navigate(TvRoutes.SETTINGS_HOME_LAYOUT) },
             onClearCache = {

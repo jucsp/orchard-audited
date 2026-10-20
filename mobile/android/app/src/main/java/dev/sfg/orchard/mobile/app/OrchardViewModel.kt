@@ -143,6 +143,7 @@ class OrchardViewModel(application: Application) : AndroidViewModel(application)
     val settings: StateFlow<OrchardSettings> = graph.settings.settings
     val searchHistory: StateFlow<List<String>> = graph.settings.searchHistory
     val auth: StateFlow<AuthState> = graph.auth.state
+    internal val accounts = AccountSwitcher(graph, viewModelScope, ::refreshHome) { showWarning(it) }
     val connect: StateFlow<ConnectState> = graph.connect.state
     val connectRemoteVolume: StateFlow<Float> = graph.connect.remote.map { it.volume }
         .stateIn(viewModelScope, SharingStarted.Eagerly, 1f)
@@ -236,7 +237,6 @@ class OrchardViewModel(application: Application) : AndroidViewModel(application)
 
     private val mutableCacheSizeBytes = MutableStateFlow(0L)
     val cacheSizeBytes: StateFlow<Long> = mutableCacheSizeBytes.asStateFlow()
-
     private val mutableIsClearingCache = MutableStateFlow(false)
     val isClearingCache: StateFlow<Boolean> = mutableIsClearingCache.asStateFlow()
 
@@ -294,7 +294,6 @@ class OrchardViewModel(application: Application) : AndroidViewModel(application)
     fun selectLibraryFilter(filter: LibraryFilter) { mutableLibraryFilter.value = filter }
 
     fun openDetail(id: String) = details.load(id, detailSeed(id), preserveContent = false)
-
     fun refreshDetail() {
         val id = details.activeId
         if (id.isNotBlank()) details.load(id, detailSeed(id), preserveContent = true)
@@ -356,12 +355,9 @@ class OrchardViewModel(application: Application) : AndroidViewModel(application)
         graph.connect.command("set_volume", JSONObject().put("volume", volume.coerceIn(0f, 1f).toDouble()))
 
     fun selectTarget(target: PlaybackTarget) = playbackTargets.select(target)
-
     /** Stops controlling another device; this phone becomes the player again. */
     fun disconnectDevice() = graph.connect.stopControlling()
-
     fun clearConnectMessage() = graph.connect.clearMessage()
-
     // Only this phone's name is ours to change; other devices name themselves.
     fun renameDevice(device: PlaybackDevice, newName: String) {
         if (device.isLocal) playbackTargets.renameLocal(newName)
