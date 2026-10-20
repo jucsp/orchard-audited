@@ -140,7 +140,7 @@ fun TvMusicVideoScreen(
                     Icons.Rounded.MusicNote,
                     "Volver a la canción",
                     onContentFocus,
-                    onClick = { onToggleMusicVideo(); onExit() },
+                    onClick = onToggleMusicVideo,
                 )
                 Spacer(Modifier.width(10.dp))
                 VideoControl(Icons.Rounded.Close, "Cerrar video", onContentFocus, onClick = onExit)

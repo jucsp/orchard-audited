@@ -317,7 +317,10 @@ fun TvOrchardApp(viewModel: OrchardViewModel) {
                             onPlayQueueIndex = viewModel::playQueueIndex,
                             onContentFocus = collapseRail,
                             hasVideo = musicVideo.available,
-                            onOpenMusicVideo = { nav.navigate(TvRoutes.MUSIC_VIDEO) { launchSingleTop = true } },
+                            onOpenMusicVideo = {
+                                if (!musicVideo.playing) viewModel.toggleMusicVideo()
+                                nav.navigate(TvRoutes.MUSIC_VIDEO) { launchSingleTop = true }
+                            },
                             onOpenListeningParty = { nav.navigate(TvRoutes.LISTENING_PARTY) { launchSingleTop = true } },
                             onTrackActions = { actionTrack = it },
                             ui = ui,
@@ -329,18 +332,25 @@ fun TvOrchardApp(viewModel: OrchardViewModel) {
                     composable(TvRoutes.MUSIC_VIDEO) {
                         val musicVideo by viewModel.musicVideo.collectAsStateWithLifecycle()
                         val videoPlayer by viewModel.videoPlayer.collectAsStateWithLifecycle()
+                        val exitVideo = {
+                            if (musicVideo.playing) viewModel.toggleMusicVideo()
+                            nav.popBackStack()
+                        }
                         TvMusicVideoScreen(
                             musicVideo = musicVideo,
                             player = videoPlayer,
                             track = shownPlayback.currentTrack,
                             playback = shownPlayback,
                             onToggle = viewModel::togglePlayback,
-                            onToggleMusicVideo = viewModel::toggleMusicVideo,
+                            onToggleMusicVideo = {
+                                viewModel.toggleMusicVideo()
+                                nav.popBackStack()
+                            },
                             onSeek = viewModel::seek,
                             onNext = viewModel::next,
                             onPrevious = viewModel::previous,
                             onContentFocus = collapseRail,
-                            onExit = { nav.popBackStack() },
+                            onExit = exitVideo,
                         )
                     }
                     composable(TvRoutes.LISTENING_PARTY) {
