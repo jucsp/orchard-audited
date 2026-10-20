@@ -332,7 +332,7 @@ fun TvOrchardApp(viewModel: OrchardViewModel) {
                     composable(TvRoutes.MUSIC_VIDEO) {
                         val musicVideo by viewModel.musicVideo.collectAsStateWithLifecycle()
                         val videoPlayer by viewModel.videoPlayer.collectAsStateWithLifecycle()
-                        val exitVideo = {
+                        val exitVideo: () -> Unit = {
                             if (musicVideo.playing) viewModel.toggleMusicVideo()
                             nav.popBackStack()
                         }
