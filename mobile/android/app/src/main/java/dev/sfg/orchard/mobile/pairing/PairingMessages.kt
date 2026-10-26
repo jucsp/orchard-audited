@@ -3,8 +3,6 @@
 
 package dev.sfg.orchard.mobile.pairing
 
-import dev.sfg.orchard.mobile.auth.YouTubeSession
-import dev.sfg.orchard.mobile.auth.YouTubeSessionAuth
 import org.json.JSONObject
 
 /** Wire models and strict JSON codec for `orchard-pair-v1`. No Android types (PAIR-INV-3). */
@@ -209,105 +207,4 @@ data class SessionRequest(
     val ivAndCiphertext: ByteArray,
 ) {
     override fun toString(): String = "SessionRequest(sid=${sessionId.size}B, sealed=${ivAndCiphertext.size}B)"
-}
-
-/** Cleartext payload sealed inside AES-GCM before it leaves the phone (PAIR-INV-1). */
-data class PairingSessionPayload(
-    val youtube: PairingYoutubeSession,
-    val spotify: PairingSpotifySession? = null,
-) {
-    override fun toString(): String = "PairingSessionPayload(youtube=$youtube, spotify=${spotify != null})"
-
-    fun toJson(): String {
-        val youtubeObj = JSONObject()
-            .put("cookie", youtube.cookie)
-            .put("visitorData", youtube.visitorData)
-            .put("dataSyncId", youtube.dataSyncId)
-            .put("accountIndex", youtube.accountIndex)
-            .put("displayName", youtube.displayName)
-            .put("avatarUrl", youtube.avatarUrl)
-        val root = JSONObject().put("v", PairingMessages.VERSION).put("youtube", youtubeObj)
-        spotify?.let { root.put("spotify", JSONObject().put("spDc", it.spDc)) }
-        return root.toString()
-    }
-
-    fun toYouTubeSession(): YouTubeSession = YouTubeSession(
-        cookie = youtube.cookie,
-        visitorData = youtube.visitorData,
-        dataSyncId = youtube.dataSyncId,
-        accountIndex = youtube.accountIndex,
-        displayName = youtube.displayName,
-        avatarUrl = youtube.avatarUrl,
-    )
-
-    companion object {
-        fun from(session: YouTubeSession, spotifySpdc: String?): PairingSessionPayload =
-            PairingSessionPayload(
-                youtube = PairingYoutubeSession(
-                    cookie = session.cookie,
-                    visitorData = session.visitorData,
-                    dataSyncId = session.dataSyncId,
-                    accountIndex = session.accountIndex,
-                    displayName = session.displayName,
-                    avatarUrl = session.avatarUrl,
-                ),
-                spotify = spotifySpdc?.takeIf { it.isNotBlank() }?.let(::PairingSpotifySession),
-            )
-
-        fun fromJson(json: String): PairingSessionPayload {
-            val root = JSONObject(json)
-            if (root.optInt("v", -1) != PairingMessages.VERSION) throw PairingProtocolException("unsupported payload version")
-            val keys = root.keys().asSequence().toSet()
-            val unknown = keys - setOf("v", "youtube", "spotify")
-            if (unknown.isNotEmpty()) throw PairingProtocolException("unknown payload fields: ${unknown.sorted().joinToString(",")}")
-            if (!root.has("youtube")) throw PairingProtocolException("missing youtube payload")
-
-            val youtube = root.getJSONObject("youtube")
-            val ytKeys = youtube.keys().asSequence().toSet()
-            val ytUnknown = ytKeys - setOf("cookie", "visitorData", "dataSyncId", "accountIndex", "displayName", "avatarUrl")
-            if (ytUnknown.isNotEmpty()) throw PairingProtocolException("unknown youtube fields: ${ytUnknown.sorted().joinToString(",")}")
-
-            val cookie = PairingMessages.boundedText(youtube.optString("cookie"), PairingMessages.MAX_COOKIE_BYTES, "cookie", allowBlank = false)
-            if (YouTubeSessionAuth.loginCookieValue(cookie) == null) {
-                throw PairingProtocolException("cookie lacks a signed-in session id")
-            }
-            val payload = PairingSessionPayload(
-                youtube = PairingYoutubeSession(
-                    cookie = cookie,
-                    visitorData = PairingMessages.boundedText(youtube.optString("visitorData"), PairingMessages.MAX_FIELD_BYTES, "visitorData"),
-                    dataSyncId = PairingMessages.boundedText(youtube.optString("dataSyncId"), PairingMessages.MAX_FIELD_BYTES, "dataSyncId"),
-                    accountIndex = youtube.optInt("accountIndex", 0).coerceAtLeast(0),
-                    displayName = PairingMessages.boundedText(youtube.optString("displayName"), PairingMessages.MAX_FIELD_BYTES, "displayName"),
-                    avatarUrl = PairingMessages.boundedText(youtube.optString("avatarUrl"), PairingMessages.MAX_FIELD_BYTES, "avatarUrl"),
-                ),
-                spotify = if (root.has("spotify")) {
-                    val spotify = root.getJSONObject("spotify")
-                    val spKeys = spotify.keys().asSequence().toSet()
-                    if (spKeys != setOf("spDc")) throw PairingProtocolException("unknown spotify fields")
-                    PairingSpotifySession(PairingMessages.boundedText(spotify.optString("spDc"), PairingMessages.MAX_SPDC_BYTES, "spDc", allowBlank = false))
-                } else {
-                    null
-                },
-            )
-            if (payload.toJson().toByteArray(Charsets.UTF_8).size > PairingMessages.MAX_PAYLOAD_BYTES) {
-                throw PairingProtocolException("payload exceeds ${PairingMessages.MAX_PAYLOAD_BYTES} bytes")
-            }
-            return payload
-        }
-    }
-}
-
-data class PairingYoutubeSession(
-    val cookie: String,
-    val visitorData: String = "",
-    val dataSyncId: String = "",
-    val accountIndex: Int = 0,
-    val displayName: String = "YouTube Music",
-    val avatarUrl: String = "",
-) {
-    override fun toString(): String = "PairingYoutubeSession(displayName=$displayName, accountIndex=$accountIndex, cookie=${cookie.length} chars)"
-}
-
-data class PairingSpotifySession(val spDc: String) {
-    override fun toString(): String = "PairingSpotifySession(spDc=${spDc.length} chars)"
 }

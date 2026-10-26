@@ -28,6 +28,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,6 +46,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import dev.sfg.orchard.mobile.pairing.PairingAdvertiser
+import dev.sfg.orchard.mobile.pairing.PairingApplyResult
+import dev.sfg.orchard.mobile.pairing.PairingCrypto
 import dev.sfg.orchard.mobile.pairing.PairingServerState
 import dev.sfg.orchard.mobile.pairing.PairingSessionPayload
 import dev.sfg.orchard.mobile.pairing.PairingUri
@@ -57,6 +60,7 @@ import dev.sfg.orchard.mobile.ui.tv.theme.TvTokens
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private enum class PairPhase { Starting, Waiting, Comparing, Received, Expired, NoNetwork }
@@ -71,7 +75,8 @@ private val QrSide = 360.dp
  */
 @Composable
 fun TvQrLoginScreen(
-    onSession: (PairingSessionPayload) -> Unit,
+    onApplySession: suspend (PairingSessionPayload, ByteArray) -> PairingApplyResult,
+    onFinished: () -> Unit,
     onUseWebLogin: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -79,6 +84,7 @@ fun TvQrLoginScreen(
     val advertiser = remember(context) { PairingAdvertiser(context) }
     val encoder = remember { ZxingQrMatrixEncoder() }
     val main = remember { Handler(Looper.getMainLooper()) }
+    val scope = rememberCoroutineScope()
     val tvName = remember { "Orchard TV ${Build.MODEL.orEmpty()}".trim().take(40) }
 
     var generation by remember { mutableIntStateOf(0) }
@@ -88,6 +94,9 @@ fun TvQrLoginScreen(
     var sasCode by remember { mutableStateOf<String?>(null) }
     var remainingSeconds by remember { mutableIntStateOf(0) }
     var received by remember { mutableStateOf<PairingSessionPayload?>(null) }
+    var receivedBinding by remember { mutableStateOf<ByteArray?>(null) }
+    var applying by remember { mutableStateOf(false) }
+    var applyResults by remember { mutableStateOf<PairingApplyResult?>(null) }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -111,6 +120,10 @@ fun TvQrLoginScreen(
         qr = null
         sasCode = null
         received = null
+        receivedBinding?.let(PairingCrypto::wipe)
+        receivedBinding = null
+        applying = false
+        applyResults = null
         val address = withContext(Dispatchers.IO) { localTvIpv4(context) }
         if (address == null) {
             phase = PairPhase.NoNetwork
@@ -141,12 +154,16 @@ fun TvQrLoginScreen(
                 }
             }
 
-            override fun onSessionReceived(payload: PairingSessionPayload) {
+            override fun onSessionReceived(payload: PairingSessionPayload, provisionBinding: ByteArray) {
                 main.post {
-                    if (gen != generation || closingByScreen) return@post
+                    if (gen != generation || closingByScreen) {
+                        PairingCrypto.wipe(provisionBinding)
+                        return@post
+                    }
                     advertiser.stop()
                     phase = PairPhase.Received
                     received = payload
+                    receivedBinding = provisionBinding
                 }
             }
         }
@@ -198,15 +215,30 @@ fun TvQrLoginScreen(
 
     received?.let { payload ->
         TvPairingConfirmDialog(
-            displayName = payload.youtube.displayName.ifBlank { "YouTube Music" },
-            includesSpotify = payload.spotify != null,
+            displayName = payloadDisplayName(payload),
+            services = payload.serviceLabels(),
+            applying = applying,
+            results = applyResults?.results,
             onConfirm = {
-                received = null
-                onSession(payload)
+                val binding = receivedBinding ?: return@TvPairingConfirmDialog
+                scope.launch {
+                    applying = true
+                    applyResults = onApplySession(payload, binding)
+                    applying = false
+                }
             },
             onCancel = {
+                receivedBinding?.let(PairingCrypto::wipe)
+                receivedBinding = null
                 received = null
+                applyResults = null
                 generation++
+            },
+            onDismissResult = {
+                received = null
+                receivedBinding = null
+                applyResults = null
+                onFinished()
             },
         )
     }
@@ -296,4 +328,20 @@ private fun statusLine(phase: PairPhase, remainingSeconds: Int): String = when (
     PairPhase.Received -> "Sesión recibida"
     PairPhase.Expired -> "El código expiró. Genera uno nuevo."
     PairPhase.NoNetwork -> "Conecta la TV a Wi-Fi o Ethernet, o inicia sesión con teclado/mouse."
+}
+
+/** A human name for the confirm dialog that does not leak secrets (PAIR-CONN-INV-6). */
+private fun payloadDisplayName(payload: PairingSessionPayload): String {
+    payload.youtube?.displayName?.takeIf { it.isNotBlank() }?.let { return it }
+    payload.orchardConnect?.email?.takeIf { it.isNotBlank() }?.let { return it }
+    payload.orchardConnect?.name?.takeIf { it.isNotBlank() }?.let { return it }
+    return "Orchard"
+}
+
+private fun PairingSessionPayload.serviceLabels(): List<String> = buildList {
+    youtube?.let { add("YouTube Music · ${it.displayName.ifBlank { "Cuenta activa" }}") }
+    orchardConnect?.let { add("Orchard Connect · ${it.email.ifBlank { it.name }}") }
+    spotify?.let { add("Spotify · Canvas y letras") }
+    qobuz?.let { add("Qobuz · usuario ${it.userId}") }
+    if (translationKeys.isNotEmpty()) add("Claves de traducción · ${translationKeys.joinToString { it.provider.label }}")
 }

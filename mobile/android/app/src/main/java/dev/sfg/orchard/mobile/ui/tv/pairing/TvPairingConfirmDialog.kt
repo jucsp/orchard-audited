@@ -30,6 +30,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import dev.sfg.orchard.mobile.pairing.PairingApplyStatus
+import dev.sfg.orchard.mobile.pairing.PairingService
+import dev.sfg.orchard.mobile.pairing.PairingServiceResult
 import dev.sfg.orchard.mobile.ui.theme.CanopyColors
 import dev.sfg.orchard.mobile.ui.theme.LocalAccent
 import dev.sfg.orchard.mobile.ui.tv.focus.TvFocusStyle
@@ -41,46 +44,108 @@ private val PillShape = RoundedCornerShape(50)
 
 /**
  * Last gate before a received session is applied on the TV (PAIR-INV-2). Focus starts on
- * "Cancelar" so a stray OK press never signs in, and Back cancels too.
+ * "Cancelar" so a stray OK press never signs in, and Back cancels too. Once the phone's `v=2`
+ * payload is applied, the same dialog reports per-service success/failure (PAIR-CONN-INV-8).
  */
 @Composable
 fun TvPairingConfirmDialog(
     displayName: String,
-    includesSpotify: Boolean,
+    services: List<String>,
+    applying: Boolean,
+    results: List<PairingServiceResult>?,
     onConfirm: () -> Unit,
     onCancel: () -> Unit,
+    onDismissResult: () -> Unit,
 ) {
-    val cancelFocus = remember { FocusRequester() }
     Dialog(
         onDismissRequest = onCancel,
         properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnBackPress = true, dismissOnClickOutside = false),
     ) {
-        LaunchedEffect(Unit) { cancelFocus.requestFocus() }
         Surface(shape = SheetShape, color = CanopyColors.Surface, modifier = Modifier.width(520.dp).wrapContentHeight()) {
             Column(Modifier.padding(horizontal = 28.dp, vertical = 24.dp)) {
-                Text(
-                    "¿Iniciar sesión como $displayName?",
-                    style = TvTokens.tvTitleNowPlaying,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    if (includesSpotify) {
-                        "Tu teléfono envió la cuenta de YouTube Music y la conexión con Spotify."
-                    } else {
-                        "Tu teléfono envió la cuenta de YouTube Music."
-                    },
-                    style = TvTokens.tvBody.copy(color = CanopyColors.MutedStrong),
-                )
-                Spacer(Modifier.height(22.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    DialogPill("Cancelar", primary = false, modifier = Modifier.focusRequester(cancelFocus), onClick = onCancel)
-                    DialogPill("Iniciar sesión", primary = true, onClick = onConfirm)
+                when {
+                    results != null -> ResultBody(results, onDismissResult)
+                    applying -> ApplyingBody()
+                    else -> ConfirmBody(displayName, services, onConfirm, onCancel)
                 }
             }
         }
     }
+}
+
+@Composable
+private fun ConfirmBody(
+    displayName: String,
+    services: List<String>,
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    val cancelFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { cancelFocus.requestFocus() }
+    Text(
+        "¿Iniciar sesión como $displayName?",
+        style = TvTokens.tvTitleNowPlaying,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis,
+    )
+    Spacer(Modifier.height(10.dp))
+    Text("Tu teléfono envió:", style = TvTokens.tvBody.copy(color = CanopyColors.MutedStrong))
+    services.forEach { service ->
+        Text("• $service", style = TvTokens.tvBody)
+    }
+    Spacer(Modifier.height(22.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        DialogPill("Cancelar", primary = false, modifier = Modifier.focusRequester(cancelFocus), onClick = onCancel)
+        DialogPill("Iniciar sesión", primary = true, onClick = onConfirm)
+    }
+}
+
+@Composable
+private fun ApplyingBody() {
+    Text("Aplicando sesión…", style = TvTokens.tvTitleNowPlaying)
+    Spacer(Modifier.height(10.dp))
+    Text("Conectando los servicios seleccionados.", style = TvTokens.tvBody.copy(color = CanopyColors.MutedStrong))
+}
+
+@Composable
+private fun ResultBody(
+    results: List<PairingServiceResult>,
+    onDismissResult: () -> Unit,
+) {
+    val continueFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { continueFocus.requestFocus() }
+    Text("Resultado de la vinculación", style = TvTokens.tvTitleNowPlaying, maxLines = 2, overflow = TextOverflow.Ellipsis)
+    Spacer(Modifier.height(10.dp))
+    if (results.isEmpty()) {
+        Text("No se pudo aplicar la sesión.", style = TvTokens.tvBody.copy(color = CanopyColors.MutedStrong))
+    } else {
+        results.forEach { result ->
+            Row(Modifier.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(serviceLabel(result.service), style = TvTokens.tvBody, modifier = Modifier.weight(1f))
+                Text(
+                    when (val status = result.status) {
+                        PairingApplyStatus.Success -> "Listo"
+                        is PairingApplyStatus.Failed -> "Falló · ${status.error}"
+                    },
+                    style = TvTokens.tvBody.copy(
+                        color = if (result.status is PairingApplyStatus.Success) CanopyColors.Text else Color(0xFFFF7777),
+                    ),
+                )
+            }
+        }
+    }
+    Spacer(Modifier.height(22.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        DialogPill("Continuar", primary = true, modifier = Modifier.focusRequester(continueFocus), onClick = onDismissResult)
+    }
+}
+
+private fun serviceLabel(service: PairingService): String = when (service) {
+    PairingService.YOUTUBE -> "YouTube Music"
+    PairingService.SPOTIFY -> "Spotify"
+    PairingService.QOBUZ -> "Qobuz"
+    PairingService.TRANSLATION_KEYS -> "Claves de traducción"
+    PairingService.ORCHARD_CONNECT -> "Orchard Connect"
 }
 
 @Composable

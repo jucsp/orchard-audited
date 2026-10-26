@@ -19,9 +19,10 @@
 
 package dev.sfg.orchard.mobile.qobuz
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.SharedPreferences
-import androidx.core.content.edit
+import dev.sfg.orchard.mobile.security.AndroidKeystoreCipher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,19 +35,40 @@ private const val KEY_TOKEN = "qobuz_token"
 private const val KEY_USER_ID = "qobuz_user_id"
 private const val KEY_ENABLED = "qobuz_enabled"
 private const val KEY_QUALITY = "qobuz_quality"
+private const val TOKEN_KEY_ALIAS = "orchard_qobuz_token_v1"
 
+/** Seam over the Keystore envelope so the migration runs in JVM tests. */
+interface QobuzTokenCipher {
+    fun encrypt(value: String): String
+    fun decrypt(value: String): String
+    fun isEncrypted(value: String): Boolean
+}
+
+private class KeystoreQobuzTokenCipher(private val cipher: AndroidKeystoreCipher) : QobuzTokenCipher {
+    override fun encrypt(value: String): String = cipher.encrypt(value)
+    override fun decrypt(value: String): String = cipher.decrypt(value)
+    override fun isEncrypted(value: String): Boolean = cipher.isEncrypted(value)
+}
+
+/**
+ * Qobuz credentials. `qobuz_token` is stored encrypted with a non-exportable Keystore key; a token
+ * saved in clear by an older build is re-encrypted on first read (SDD-tv-qr-pairing-connect D4).
+ */
+@SuppressLint("UseKtx") // Token writes use commit(): a failed write must not look like a saved credential.
 class QobuzRepository(
     context: Context,
     private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO),
+    private val cipher: QobuzTokenCipher = KeystoreQobuzTokenCipher(AndroidKeystoreCipher(TOKEN_KEY_ALIAS)),
 ) {
     private val prefs: SharedPreferences =
         context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val lock = Any()
 
     private val _status = MutableStateFlow(loadInitialStatus())
     val status: StateFlow<QobuzStatus> = _status.asStateFlow()
 
     private fun loadInitialStatus(): QobuzStatus {
-        val token = prefs.getString(KEY_TOKEN, "").orEmpty()
+        val token = readToken()
         val enabled = prefs.getBoolean(KEY_ENABLED, false)
         val qualityId = prefs.getString(KEY_QUALITY, QobuzQuality.AUTO.id)
         val quality = QobuzQuality.fromId(qualityId)
@@ -57,18 +79,37 @@ class QobuzRepository(
         )
     }
 
+    /** Plain token, migrating a clear-text value in place. Blank when absent or unreadable. */
+    private fun readToken(): String = synchronized(lock) {
+        val stored = prefs.getString(KEY_TOKEN, "").orEmpty()
+        when {
+            stored.isBlank() -> ""
+            cipher.isEncrypted(stored) -> runCatching { cipher.decrypt(stored) }.getOrElse {
+                // A restored preference without its Keystore key cannot be read: drop it.
+                prefs.edit().remove(KEY_TOKEN).remove(KEY_USER_ID).putBoolean(KEY_ENABLED, false).commit()
+                ""
+            }
+            else -> stored.also { prefs.edit().putString(KEY_TOKEN, cipher.encrypt(it)).commit() }
+        }
+    }
+
     fun getCredentials(): QobuzSession? {
-        val token = prefs.getString(KEY_TOKEN, "").orEmpty()
+        val token = readToken()
         val userId = prefs.getLong(KEY_USER_ID, -1L)
         if (token.isBlank() || userId <= 0) return null
         return QobuzSession(token = token, userId = userId)
     }
 
     fun connect(token: String, userId: Long) {
-        prefs.edit {
-            putString(KEY_TOKEN, token)
-            putLong(KEY_USER_ID, userId)
-            putBoolean(KEY_ENABLED, true)
+        val encrypted = cipher.encrypt(token)
+        synchronized(lock) {
+            check(
+                prefs.edit()
+                    .putString(KEY_TOKEN, encrypted)
+                    .putLong(KEY_USER_ID, userId)
+                    .putBoolean(KEY_ENABLED, true)
+                    .commit(),
+            ) { "Qobuz token storage failed" }
         }
 
         _status.value = _status.value.copy(
@@ -79,10 +120,8 @@ class QobuzRepository(
     }
 
     fun disconnect() {
-        prefs.edit {
-            remove(KEY_TOKEN)
-            remove(KEY_USER_ID)
-            putBoolean(KEY_ENABLED, false)
+        synchronized(lock) {
+            prefs.edit().remove(KEY_TOKEN).remove(KEY_USER_ID).putBoolean(KEY_ENABLED, false).commit()
         }
 
         _status.value = _status.value.copy(
@@ -95,12 +134,12 @@ class QobuzRepository(
     fun setEnabled(enabled: Boolean) {
         val hasToken = prefs.getString(KEY_TOKEN, "").orEmpty().isNotBlank()
         val effective = enabled && hasToken
-        prefs.edit { putBoolean(KEY_ENABLED, effective) }
+        prefs.edit().putBoolean(KEY_ENABLED, effective).apply()
         _status.value = _status.value.copy(enabled = effective)
     }
 
     fun setQuality(quality: QobuzQuality) {
-        prefs.edit { putString(KEY_QUALITY, quality.id) }
+        prefs.edit().putString(KEY_QUALITY, quality.id).apply()
         _status.value = _status.value.copy(quality = quality)
     }
 

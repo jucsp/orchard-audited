@@ -79,6 +79,7 @@ class OrchardAccountService private constructor(context: Context) {
     private var accessToken = ""
     private var accessExpiry = 0L
     @Volatile private var pendingSignIn: PendingSignIn? = null
+    private val provisioning = OrchardAccountProvisioning { method, path, body, bearer -> request(method, path, body, bearer) }
     private var signInTimeout: Job? = null
     private val generation = AtomicLong()
 
@@ -264,6 +265,30 @@ class OrchardAccountService private constructor(context: Context) {
         }
     }
 
+    /**
+     * Phone side of TV provisioning: a one-time code bound to [binding]. The phone's own refresh
+     * and access tokens never leave it (PAIR-CONN-INV-1).
+     */
+    suspend fun requestProvisionCode(binding: ByteArray): ProvisionCode = withContext(Dispatchers.IO) {
+        val token = refreshAccessToken()
+            ?: throw ProvisionException("Inicia sesión en Orchard Connect en el teléfono", retriable = false)
+        provisioning.requestProvisionCode(token, binding)
+    }
+
+    /**
+     * TV side: redeems [code] into this install's own device. The new `deviceId` makes
+     * ConnectRepository reconnect by itself; a previous session here is logged out best-effort.
+     */
+    suspend fun redeemProvision(code: String, binding: ByteArray, deviceName: String) = withContext(Dispatchers.IO) {
+        cancelSignIn()
+        val previous = synchronized(tokenLock) { refreshToken }
+        acceptTokens(provisioning.redeemProvision(code, binding, deviceName))
+        if (previous.isNotBlank()) {
+            runCatching { request("POST", "/auth/logout", JSONObject().put("refresh_token", previous)) }
+        }
+        refreshDevices()
+    }
+
     /** A valid access token, refreshed first when needed; null when signed out or offline. */
     suspend fun accessToken(): String? = refreshAccessToken()
 
@@ -278,7 +303,7 @@ class OrchardAccountService private constructor(context: Context) {
                     .put("grant_type", "refresh_token").put("refresh_token", refreshToken))
                 acceptTokens(response)
                 accessToken
-            } catch (e: AccountHttpException) {
+            } catch (e: AccountServiceException) {
                 if (e.status == 400 && e.code == "invalid_grant") {
                     clearLocalSession()
                     fail("You were signed out of Orchard. Sign in again.")
@@ -343,7 +368,7 @@ class OrchardAccountService private constructor(context: Context) {
             val text = (if (status in 200..299) connection.inputStream else connection.errorStream)
                 ?.bufferedReader()?.use { it.readText() }.orEmpty()
             val json = if (text.isBlank()) JSONObject() else JSONObject(text)
-            if (status !in 200..299) throw AccountHttpException(
+            if (status !in 200..299) throw AccountServiceException(
                 status, json.optString("error"), json.optString("error_description", "Account service returned HTTP $status"),
             )
             json
@@ -351,8 +376,6 @@ class OrchardAccountService private constructor(context: Context) {
             connection.disconnect()
         }
     }
-
-    private class AccountHttpException(val status: Int, val code: String, message: String) : Exception(message)
 
     companion object {
         // Fork's own account + Orchard Connect Worker (INV-3: no author hosts).

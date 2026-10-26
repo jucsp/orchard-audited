@@ -28,21 +28,22 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.sfg.orchard.mobile.pairing.PairingOffer
+import dev.sfg.orchard.mobile.pairing.PairingService
 
 /**
- * The phone's consent gate (PAIR-INV-2): nothing secret is sent until "Vincular". Spotify is
- * opt-in, hidden without a `sp_dc`, and in SAS mode the user compares [sas] with the TV.
+ * The phone's consent gate (PAIR-INV-2): nothing secret is sent until "Vincular". Every detected
+ * service is its own opt-in row; BYOK translation keys default off because they carry billing (D3).
  */
 @Composable
 fun PairConfirmDialog(
     tvName: String,
-    accountName: String,
-    hasSpotify: Boolean,
+    offers: List<PairingOffer>,
     sas: String?,
-    onConfirm: (includeSpotify: Boolean) -> Unit,
+    onConfirm: (Set<PairingService>) -> Unit,
     onCancel: () -> Unit,
 ) {
-    var includeSpotify by remember { mutableStateOf(false) }
+    var selected by remember(offers) { mutableStateOf(offers.filter { it.selectedByDefault }.map { it.service }.toSet()) }
     val cancelFocus = remember { FocusRequester() }
 
     AlertDialog(
@@ -50,38 +51,53 @@ fun PairConfirmDialog(
         title = { Text("Vincular con $tvName") },
         text = {
             Column {
-                Text("Se enviará la cuenta $accountName de YouTube Music a esta TV.")
-                if (sas != null) {
-                    Spacer(Modifier.height(14.dp))
-                    Text("¿La TV muestra este mismo código?", style = MaterialTheme.typography.bodyMedium)
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        sas,
-                        style = MaterialTheme.typography.headlineMedium.copy(
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 3.sp,
-                        ),
-                    )
-                }
-                if (hasSpotify) {
-                    Spacer(Modifier.height(10.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(checked = includeSpotify, onCheckedChange = { includeSpotify = it })
-                        Spacer(Modifier.width(4.dp))
-                        Text("Incluir Spotify")
+                if (offers.isEmpty()) {
+                    Text("No hay cuentas disponibles para vincular en este teléfono. Inicia sesión en YouTube Music u Orchard Connect y vuelve a intentarlo.")
+                } else {
+                    Text("Se enviarán a la TV los servicios que marques:")
+                    if (sas != null) {
+                        Spacer(Modifier.height(14.dp))
+                        Text("¿La TV muestra este mismo código?", style = MaterialTheme.typography.bodyMedium)
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            sas,
+                            style = MaterialTheme.typography.headlineMedium.copy(
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 3.sp,
+                            ),
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    offers.forEach { offer ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = offer.service in selected,
+                                onCheckedChange = { checked ->
+                                    selected = if (checked) selected + offer.service else selected - offer.service
+                                },
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Column {
+                                Text(offer.title)
+                                if (offer.account.isNotBlank()) {
+                                    Text(offer.account, style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
+                        }
                     }
                 }
             }
         },
         dismissButton = {
-            // Composed inside the dialog window, where the requester is attached.
             LaunchedEffect(Unit) { runCatching { cancelFocus.requestFocus() } }
             TextButton(onClick = onCancel, modifier = Modifier.focusRequester(cancelFocus)) { Text("Cancelar") }
         },
         confirmButton = {
-            Button(onClick = { onConfirm(includeSpotify && hasSpotify) }) {
-                Text(if (sas != null) "Coincide, vincular" else "Vincular")
+            if (offers.isNotEmpty()) {
+                Button(onClick = { onConfirm(selected) }, enabled = selected.isNotEmpty()) {
+                    Text(if (sas != null) "Coincide, vincular" else "Vincular")
+                }
             }
         },
     )

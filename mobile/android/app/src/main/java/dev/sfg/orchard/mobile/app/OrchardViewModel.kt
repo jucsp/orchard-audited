@@ -154,6 +154,8 @@ class OrchardViewModel(application: Application) : AndroidViewModel(application)
     val activeStreamDetail: StateFlow<dev.sfg.orchard.mobile.model.StreamDetail> = graph.activeStreamDetail.asStateFlow()
 
     fun connectQobuz(token: String, userId: Long) = graph.qobuz.connect(token, userId)
+    /** Decrypted credentials for the phone's QR pairing collector; null when disconnected. */
+    fun qobuzCredentials() = graph.qobuz.getCredentials()
     val maxActive: StateFlow<Boolean> = graph.maxActive
 
     fun disconnectQobuz() {

@@ -5,6 +5,7 @@ package dev.sfg.orchard.mobile.ui.tv.settings
 
 import android.widget.Toast
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -15,6 +16,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.composable
 import dev.sfg.orchard.mobile.UpdateState
 import dev.sfg.orchard.mobile.app.OrchardViewModel
+import dev.sfg.orchard.mobile.auth.OrchardAccountService
 import dev.sfg.orchard.mobile.settings.CacheManager
 import dev.sfg.orchard.mobile.ui.screens.SettingsScreen
 import dev.sfg.orchard.mobile.ui.tv.TvRoutes
@@ -36,6 +38,8 @@ fun NavGraphBuilder.tvSettingsRoutes(
 ) {
     composable(TvRoutes.SETTINGS) {
         val context = LocalContext.current
+        val account = remember { OrchardAccountService.get(context) }
+        val accountState by account.state.collectAsStateWithLifecycle()
         val settings by viewModel.settings.collectAsStateWithLifecycle()
         val auth by viewModel.auth.collectAsStateWithLifecycle()
         val accounts by viewModel.accounts.saved.collectAsStateWithLifecycle()
@@ -62,6 +66,10 @@ fun NavGraphBuilder.tvSettingsRoutes(
             onSignIn = { nav.navigate(TvRoutes.LOGIN) },
             onSwitchAccount = { nav.navigate(TvRoutes.ACCOUNT_SWITCH) },
             onSignOut = viewModel::signOut,
+            orchardConnectEmail = accountState.email.orEmpty(),
+            orchardConnectSignedIn = accountState.signedIn,
+            onConnectOrchard = { nav.navigate(TvRoutes.LOGIN) },
+            onSignOutOrchard = { account.signOut() },
             onSelectAccount = viewModel.accounts::switchTo,
             onRemoveAccount = viewModel.accounts::remove,
             onWelcome = { nav.navigate(TvRoutes.WELCOME) },

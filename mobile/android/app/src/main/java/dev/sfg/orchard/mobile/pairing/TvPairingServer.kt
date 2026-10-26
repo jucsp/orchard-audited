@@ -3,6 +3,7 @@
 
 package dev.sfg.orchard.mobile.pairing
 
+import dev.sfg.orchard.mobile.auth.OrchardAccountProvisioning
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.net.InetAddress
@@ -35,7 +36,8 @@ class TvPairingServer(
     interface Listener {
         fun onState(state: PairingServerState)
         fun onSas(sas: String)
-        fun onSessionReceived(payload: PairingSessionPayload)
+        /** [provisionBinding] ties an Orchard Connect code to this pairing; the transcript is already wiped. */
+        fun onSessionReceived(payload: PairingSessionPayload, provisionBinding: ByteArray)
     }
 
     // Fresh session material; the screen regenerates the whole server for a new code (D1/D4).
@@ -262,22 +264,27 @@ class TvPairingServer(
         }
         val payload = try {
             PairingSessionPayload.fromJson(plaintext.toString(StandardCharsets.UTF_8))
-        } catch (error: PairingProtocolException) {
+        } catch (error: Exception) {
+            // org.json errors are RuntimeExceptions; both mean an unreadable payload.
             recordFailure()
             writeJson(output, 400, PairingMessages.errorJson("bad_payload"))
             return
+        } finally {
+            PairingCrypto.wipe(plaintext)
         }
+        // Computed before deliverSession wipes the transcript.
+        val binding = OrchardAccountProvisioning.computeProvisionBinding(th)
         writeJson(output, 200, PairingMessages.sessionResponseJson("pending_tv_confirm"))
-        deliverSession(payload)
+        deliverSession(payload, binding)
     }
 
-    private fun deliverSession(payload: PairingSessionPayload) {
+    private fun deliverSession(payload: PairingSessionPayload, binding: ByteArray) {
         if (!transition(PairingServerState.Bound, PairingServerState.Received)) return
         running.set(false)
         runCatching { server.close() }
         acceptor.shutdownNow()
         wipeHandshake()
-        listener.onSessionReceived(payload)
+        listener.onSessionReceived(payload, binding)
     }
 
     private fun expired(): Boolean = now() - startedAt > maxLifetimeMs

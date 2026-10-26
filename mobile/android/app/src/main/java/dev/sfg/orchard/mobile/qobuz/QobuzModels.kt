@@ -33,7 +33,9 @@ enum class QobuzQuality(val id: String, val label: String, val formatId: Int) {
 data class QobuzSession(
     val token: String,
     val userId: Long,
-)
+) {
+    override fun toString(): String = "QobuzSession(token=${token.length} chars)"
+}
 
 data class QobuzStatus(
     val status: String = "disconnected",

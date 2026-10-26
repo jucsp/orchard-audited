@@ -3,6 +3,7 @@
 
 package dev.sfg.orchard.mobile.pairing
 
+import dev.sfg.orchard.mobile.auth.OrchardAccountProvisioning
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.net.InetSocketAddress
@@ -32,8 +33,17 @@ class PreparedPairing internal constructor(
 ) {
     val sas: String get() = exchange.sas
 
+    @Volatile private var wiped = false
+
+    /** Binds an Orchard Connect provisioning code to this pairing's transcript (PAIR-CONN-INV-1). */
+    fun provisionBinding(): ByteArray {
+        check(!wiped) { "pairing already sent or abandoned" }
+        return OrchardAccountProvisioning.computeProvisionBinding(exchange.transcript)
+    }
+
     /** Drops the session key once the pairing is sent or abandoned (PAIR-INV-7). */
     fun wipe() {
+        wiped = true
         PairingCrypto.wipe(exchange.key)
         PairingCrypto.wipe(exchange.transcript)
     }
@@ -105,10 +115,14 @@ class PairingClient(
         payload: PairingSessionPayload,
     ): String {
         val plaintext = payload.toJson().toByteArray(StandardCharsets.UTF_8)
-        if (plaintext.size > PairingMessages.MAX_PAYLOAD_BYTES) {
-            throw PairingProtocolException("payload exceeds ${PairingMessages.MAX_PAYLOAD_BYTES} bytes")
+        val sealed = try {
+            if (plaintext.size > PairingMessages.MAX_PAYLOAD_BYTES) {
+                throw PairingProtocolException("payload exceeds ${PairingMessages.MAX_PAYLOAD_BYTES} bytes")
+            }
+            PairingCrypto.seal(exchange.key, plaintext, exchange.transcript)
+        } finally {
+            PairingCrypto.wipe(plaintext)
         }
-        val sealed = PairingCrypto.seal(exchange.key, plaintext, exchange.transcript)
         val body = PairingMessages.sessionRequestJson(sessionId, sealed)
         return PairingMessages.parseSessionResponse(postJson(host, port, PATH_SESSION, body))
     }
@@ -181,7 +195,10 @@ class PairingClient(
             }
             if (code !in 200..299) {
                 val error = PairingMessages.parseErrorCode(responseBody.toString(StandardCharsets.UTF_8))
-                throw PairingProtocolException("pairing request failed with HTTP $code${error?.let { " ($it)" } ?: ""}")
+                throw PairingProtocolException(
+                    "pairing request failed with HTTP $code${error?.let { " ($it)" } ?: ""}",
+                    errorCode = error,
+                )
             }
             return responseBody.toString(StandardCharsets.UTF_8)
         }
@@ -203,6 +220,8 @@ class PairingClient(
     }
 
     companion object {
+        /** A TV without payload `v=2` answers this; the phone asks to update it (PAIR-CONN-INV-4). */
+        const val ERROR_BAD_PAYLOAD = "bad_payload"
         const val CONNECT_TIMEOUT_MS = 10_000
         const val READ_TIMEOUT_MS = 10_000
         private const val MAX_RESPONSE_BYTES = 64 * 1024

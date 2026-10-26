@@ -31,11 +31,17 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import dev.sfg.orchard.mobile.OrchardGraph
+import dev.sfg.orchard.mobile.auth.OrchardAccountService
+import dev.sfg.orchard.mobile.lyrics.translation.TranslationApiKeys
 import dev.sfg.orchard.mobile.model.LocalMaxActive
 import dev.sfg.orchard.mobile.model.CatalogKind
 import dev.sfg.orchard.mobile.model.LoadState
+import dev.sfg.orchard.mobile.model.LyricTranslationProvider
 import dev.sfg.orchard.mobile.model.PlaybackTarget
+import dev.sfg.orchard.mobile.pairing.ConnectIdentity
+import dev.sfg.orchard.mobile.pairing.PairingCredentialSources
 import dev.sfg.orchard.mobile.pairing.PairingLinkInbox
+import dev.sfg.orchard.mobile.pairing.PairingTranslationKey
 import dev.sfg.orchard.mobile.ui.components.PlaylistPickerSheet
 import dev.sfg.orchard.mobile.ui.motion.NavMotion
 import dev.sfg.orchard.mobile.ui.navigation.Routes
@@ -236,8 +242,27 @@ internal fun OrchardNavigation(
         }
         composable(Routes.PAIR_TV) {
             PairWithTvScreen(
-                session = viewModel::youtubeSession,
-                spotifySpdc = { viewModel.settings.value.spotifySpdc },
+                sources = remember {
+                    PairingCredentialSources(
+                        youtube = viewModel::youtubeSession,
+                        spotifySpdc = { viewModel.settings.value.spotifySpdc.takeIf { it.isNotBlank() } },
+                        connect = {
+                            OrchardAccountService.get(context).state.value.let {
+                                if (it.signedIn) ConnectIdentity(it.email, it.name) else null
+                            }
+                        },
+                        qobuz = viewModel::qobuzCredentials,
+                        translationKeys = {
+                            val keys = TranslationApiKeys(context)
+                            LyricTranslationProvider.entries
+                                .filter { it != LyricTranslationProvider.LOCAL && keys.has(it) }
+                                .mapNotNull { provider ->
+                                    keys.load(provider).takeIf { it.isNotBlank() }?.let { PairingTranslationKey(provider, it) }
+                                }
+                        },
+                        requestProvisionCode = { binding -> OrchardAccountService.get(context).requestProvisionCode(binding) },
+                    )
+                },
                 onBack = { nav.popBackStack(Routes.PAIR_TV, inclusive = true) },
             )
         }

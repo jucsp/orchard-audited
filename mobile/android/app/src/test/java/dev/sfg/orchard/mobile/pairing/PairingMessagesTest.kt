@@ -118,7 +118,7 @@ class PairingMessagesTest {
         expectProtocolError {
             PairingSessionPayload.fromJson(JSONObject(base.toString()).apply { getJSONObject("youtube").put("password", "x") }.toString())
         }
-        expectProtocolError { PairingSessionPayload.fromJson(JSONObject(base.toString()).put("v", 2).toString()) }
+        expectProtocolError { PairingSessionPayload.fromJson(JSONObject(base.toString()).put("v", 3).toString()) }
         expectProtocolError {
             PairingSessionPayload.fromJson(JSONObject(base.toString()).put("spotify", JSONObject().put("spDc", "a").put("x", 1)).toString())
         }

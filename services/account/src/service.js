@@ -26,6 +26,7 @@ import { HttpError, htmlPage, issuer, json, nowSeconds, readJson, requireSession
 import { ACCESS_TOKEN_AUDIENCE, publicJwk, signJwt } from "./jwt.js";
 import { createReport, getReport, isScreenshotPath, listReports, markReportRead, serveScreenshot } from "./support.js";
 import { generateRoomCode, normalizeCode, PartyRoom } from "./party.js";
+import { consumeProvisionCode, createProvisionCode, isProvisionBinding } from "./provision.js";
 import { githubWebhook } from "./support_sync.js";
 
 export const ACCESS_TOKEN_SECONDS = 15 * 60;
@@ -97,6 +98,25 @@ async function issueTokens(env, user, deviceId, refreshSecret) {
     device_id: deviceId,
     user: userResponse(user),
   });
+}
+
+async function registerDevice(env, user, device) {
+  const platform = PLATFORMS.has(device.platform) ? device.platform : "unknown";
+  const deviceId = crypto.randomUUID();
+  const refreshSecret = randomToken();
+  const now = nowSeconds();
+  // Sign before writing so a signing failure leaves no orphan device.
+  const response = await issueTokens(env, user, deviceId, refreshSecret);
+  await env.DB.batch([
+    env.DB.prepare(
+      "INSERT INTO devices (id, user_id, name, platform, refresh_hash, rotated_at, created_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    ).bind(deviceId, user.id, cleanDeviceName(device.name), platform, await hashSecret(refreshSecret), now, now, now),
+    // Oldest devices fall off so one account cannot grow the table forever.
+    env.DB.prepare(
+      "DELETE FROM devices WHERE user_id = ? AND id NOT IN (SELECT id FROM devices WHERE user_id = ? ORDER BY last_seen_at DESC LIMIT ?)",
+    ).bind(user.id, user.id, MAX_DEVICES_PER_USER),
+  ]);
+  return response;
 }
 
 async function startGoogleSignIn(request, env) {
@@ -192,22 +212,15 @@ async function redeemAuthorizationCode(env, body) {
   if (!user) throw new HttpError(400, "invalid_grant", "Account no longer exists");
 
   const device = body.device && typeof body.device === "object" ? body.device : {};
-  const platform = PLATFORMS.has(device.platform) ? device.platform : "unknown";
-  const deviceId = crypto.randomUUID();
-  const refreshSecret = randomToken();
-  const now = nowSeconds();
-  // Sign before writing so a signing failure leaves no orphan device.
-  const response = await issueTokens(env, user, deviceId, refreshSecret);
-  await env.DB.batch([
-    env.DB.prepare(
-      "INSERT INTO devices (id, user_id, name, platform, refresh_hash, rotated_at, created_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-    ).bind(deviceId, user.id, cleanDeviceName(device.name), platform, await hashSecret(refreshSecret), now, now, now),
-    // Oldest devices fall off so one account cannot grow the table forever.
-    env.DB.prepare(
-      "DELETE FROM devices WHERE user_id = ? AND id NOT IN (SELECT id FROM devices WHERE user_id = ? ORDER BY last_seen_at DESC LIMIT ?)",
-    ).bind(user.id, user.id, MAX_DEVICES_PER_USER),
-  ]);
-  return response;
+  return registerDevice(env, user, device);
+}
+
+async function redeemProvision(env, body) {
+  const row = await consumeProvisionCode(env, body);
+  const user = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(row.user_id).first();
+  if (!user) throw new HttpError(400, "invalid_grant", "Account no longer exists");
+  const device = body.device && typeof body.device === "object" ? body.device : {};
+  return registerDevice(env, user, device);
 }
 
 function splitRefreshToken(value) {
@@ -261,7 +274,8 @@ async function token(request, env) {
   const body = await readJson(request);
   if (body.grant_type === "authorization_code") return redeemAuthorizationCode(env, body);
   if (body.grant_type === "refresh_token") return rotateRefreshToken(env, body);
-  throw new HttpError(400, "unsupported_grant_type", "Use authorization_code or refresh_token");
+  if (body.grant_type === "urn:orchard:grant-type:provision") return redeemProvision(env, body);
+  throw new HttpError(400, "unsupported_grant_type", "Use authorization_code, refresh_token, or urn:orchard:grant-type:provision");
 }
 
 async function logout(request, env) {
@@ -295,6 +309,16 @@ async function removeDevice(request, env, deviceId) {
   const result = await env.DB.prepare("DELETE FROM devices WHERE id = ? AND user_id = ?").bind(deviceId, claims.sub).run();
   if (!result.meta?.changes) throw new HttpError(404, "not_found", "No such device");
   return new Response(null, { status: 204 });
+}
+
+async function provisionCode(request, env) {
+  await rateLimit(env, request, "provision");
+  const claims = await requireSession(request, env);
+  const body = await readJson(request);
+  if (!isProvisionBinding(body.binding)) {
+    throw new HttpError(400, "invalid_request", "binding must be a 32-byte base64url string");
+  }
+  return json(await createProvisionCode(env, claims.sub, claims.did, body.binding));
 }
 
 function jwks(env) {
@@ -348,6 +372,7 @@ async function route(request, env, ctx) {
   if (method === "POST" && pathname === "/auth/logout") return logout(request, env);
   if (method === "GET" && pathname === "/me") return me(request, env);
   if (method === "GET" && pathname === "/devices") return listDevices(request, env);
+  if (method === "POST" && pathname === "/devices/provision") return provisionCode(request, env);
   const deviceMatch = pathname.match(/^\/devices\/([0-9a-f-]{36})$/);
   if (method === "DELETE" && deviceMatch) return removeDevice(request, env, deviceMatch[1]);
   if (method === "GET" && pathname === "/.well-known/jwks.json") return jwks(env);
@@ -380,6 +405,7 @@ export async function purgeExpired(env, now = nowSeconds()) {
     env.DB.prepare("DELETE FROM auth_requests WHERE expires_at <= ?").bind(now),
     env.DB.prepare("DELETE FROM auth_codes WHERE expires_at <= ?").bind(now),
     env.DB.prepare("DELETE FROM github_links WHERE expires_at <= ?").bind(now),
+    env.DB.prepare("DELETE FROM provision_codes WHERE expires_at <= ?").bind(now),
     env.DB.prepare("DELETE FROM devices WHERE last_seen_at <= ?").bind(now - REFRESH_IDLE_SECONDS),
   ]);
   await purgeArtwork(env, now);

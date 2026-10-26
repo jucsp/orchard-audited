@@ -3,13 +3,18 @@
 
 package dev.sfg.orchard.mobile.ui.tv
 
+import android.os.Build
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.composable
 import dev.sfg.orchard.mobile.app.OrchardViewModel
 import dev.sfg.orchard.mobile.auth.AuthState
+import dev.sfg.orchard.mobile.auth.OrchardAccountService
+import dev.sfg.orchard.mobile.lyrics.translation.TranslationApiKeys
+import dev.sfg.orchard.mobile.pairing.PairingSessionApplier
 import dev.sfg.orchard.mobile.ui.screens.NativeLoginScreen
 import dev.sfg.orchard.mobile.ui.tv.pairing.TvQrLoginScreen
 
@@ -23,19 +28,33 @@ internal fun NavGraphBuilder.tvLoginRoutes(
     collapseRail: () -> Unit,
 ) {
     composable(TvRoutes.LOGIN) {
+        val context = LocalContext.current
         TvSafeContent(collapseRail) {
             TvQrLoginScreen(
-                onSession = { payload ->
-                    val youtube = payload.youtube
-                    viewModel.completeSignIn(
-                        youtube.cookie, youtube.visitorData, youtube.dataSyncId, youtube.accountIndex,
-                        pageAvatarUrl = youtube.avatarUrl,
-                    )
-                    payload.spotify?.let { spotify ->
-                        viewModel.updateSettings(viewModel.settings.value.copy(spotifySpdc = spotify.spDc))
-                    }
-                    nav.popBackStack(TvRoutes.LOGIN, inclusive = true)
+                onApplySession = { payload, binding ->
+                    PairingSessionApplier(
+                        applyYouTube = { youtube ->
+                            viewModel.completeSignIn(
+                                youtube.cookie, youtube.visitorData, youtube.dataSyncId, youtube.accountIndex,
+                                pageAvatarUrl = youtube.avatarUrl,
+                            )
+                        },
+                        applySpotify = { spotify ->
+                            viewModel.updateSettings(viewModel.settings.value.copy(spotifySpdc = spotify.spDc))
+                        },
+                        applyQobuz = { qobuz ->
+                            viewModel.connectQobuz(qobuz.token, qobuz.userId)
+                        },
+                        applyTranslationKey = { key ->
+                            TranslationApiKeys(context).save(key.provider, key.key)
+                        },
+                        redeemConnect = { code, codeBinding, deviceName ->
+                            OrchardAccountService.get(context).redeemProvision(code, codeBinding, deviceName)
+                        },
+                        deviceName = { "Orchard TV ${Build.MODEL.orEmpty()}".trim().take(40) },
+                    ).apply(payload, binding)
                 },
+                onFinished = { nav.popBackStack(TvRoutes.LOGIN, inclusive = true) },
                 onUseWebLogin = { nav.navigate(TvRoutes.LOGIN_WEB) { launchSingleTop = true } },
             )
         }

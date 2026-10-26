@@ -16,6 +16,7 @@ internal class RecordingListener : TvPairingServer.Listener {
     val states = CopyOnWriteArrayList<PairingServerState>()
     val sasCodes = CopyOnWriteArrayList<String>()
     val payloads = CopyOnWriteArrayList<PairingSessionPayload>()
+    val provisionBindings = CopyOnWriteArrayList<ByteArray>()
     val received = CountDownLatch(1)
     val closed = CountDownLatch(1)
     val sas = CountDownLatch(1)
@@ -30,8 +31,9 @@ internal class RecordingListener : TvPairingServer.Listener {
         this.sas.countDown()
     }
 
-    override fun onSessionReceived(payload: PairingSessionPayload) {
+    override fun onSessionReceived(payload: PairingSessionPayload, provisionBinding: ByteArray) {
         payloads += payload
+        provisionBindings += provisionBinding
         received.countDown()
     }
 

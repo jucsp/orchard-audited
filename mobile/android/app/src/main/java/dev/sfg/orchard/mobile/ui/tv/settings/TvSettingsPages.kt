@@ -67,6 +67,10 @@ class TvSettingsModel(
     val onCheckForUpdates: () -> Unit,
     val onInstallUpdate: () -> Unit,
     val onAdvanced: () -> Unit,
+    val orchardConnectEmail: String = "",
+    val orchardConnectSignedIn: Boolean = false,
+    val onConnectOrchard: () -> Unit = {},
+    val onSignOutOrchard: () -> Unit = {},
 )
 
 fun tvSettingsItems(category: TvSettingsCategory, m: TvSettingsModel): List<TvSettingItem> = when (category.id) {
@@ -110,6 +114,26 @@ private fun accountItems(m: TvSettingsModel): List<TvSettingItem> = buildList {
         add(TvSettingItem.Action("Cerrar sesión en todas las cuentas", "Borra todas las cuentas guardadas del televisor", onClick = m.onSignOut, destructive = true))
     } else {
         add(TvSettingItem.Action("Iniciar sesión", "Escanea un código QR con tu teléfono", onClick = m.onSignIn))
+    }
+    add(TvSettingItem.Header("Orchard Connect"))
+    add(
+        TvSettingItem.Action(
+            if (m.orchardConnectSignedIn) "Cuenta de Orchard Connect" else "Vincular desde el teléfono",
+            if (m.orchardConnectSignedIn) "Conectado · ${m.orchardConnectEmail}" else "Sin sesión · escanea el código QR",
+            onClick = m.onConnectOrchard,
+            keyId = "orchard_connect_link",
+        ),
+    )
+    if (m.orchardConnectSignedIn) {
+        add(
+            TvSettingItem.Action(
+                "Cerrar sesión de Orchard Connect",
+                null,
+                onClick = m.onSignOutOrchard,
+                destructive = true,
+                keyId = "orchard_connect_signout",
+            ),
+        )
     }
     add(TvSettingItem.Action("Asistente de bienvenida", "Vuelve a ver la configuración inicial", m.onWelcome))
 }

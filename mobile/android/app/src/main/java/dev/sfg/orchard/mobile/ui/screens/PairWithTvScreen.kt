@@ -39,12 +39,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import dev.sfg.orchard.mobile.auth.YouTubeSession
+import dev.sfg.orchard.mobile.auth.ProvisionException
 import dev.sfg.orchard.mobile.pairing.PairingClient
+import dev.sfg.orchard.mobile.pairing.PairingCredentialCollector
+import dev.sfg.orchard.mobile.pairing.PairingCredentialSources
 import dev.sfg.orchard.mobile.pairing.PairingDiscovery
 import dev.sfg.orchard.mobile.pairing.PairingLinkInbox
 import dev.sfg.orchard.mobile.pairing.PairingMessages
-import dev.sfg.orchard.mobile.pairing.PairingSessionPayload
+import dev.sfg.orchard.mobile.pairing.PairingProtocolException
+import dev.sfg.orchard.mobile.pairing.PairingService
 import dev.sfg.orchard.mobile.pairing.PairingTv
 import dev.sfg.orchard.mobile.pairing.PreparedPairing
 import kotlinx.coroutines.Dispatchers
@@ -63,26 +66,27 @@ private sealed interface PairStep {
 
 /**
  * Phone side of TV pairing (SDD-tv-qr-pairing §6.3): NSD list for SAS mode, or a validated QR link
- * from [PairingLinkInbox]. The session is read only when the user confirms in [PairConfirmDialog].
+ * from [PairingLinkInbox]. The user confirms in [PairConfirmDialog], then [PairingCredentialCollector]
+ * builds a `v=2` payload with only the selected services; the Connect code is requested after consent.
  */
 @Composable
 fun PairWithTvScreen(
-    session: () -> YouTubeSession?,
-    spotifySpdc: () -> String,
+    sources: PairingCredentialSources,
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val discovery = remember(context) { PairingDiscovery(context) }
     val client = remember { PairingClient() }
+    val collector = remember(sources) { PairingCredentialCollector(sources) }
+    val offers = remember(sources) { collector.offers() }
     val qrLink by PairingLinkInbox.pending.collectAsStateWithLifecycle()
 
     var tvs by remember { mutableStateOf<List<PairingTv>>(emptyList()) }
     var scanGeneration by remember { mutableIntStateOf(0) }
     var scanning by remember { mutableStateOf(false) }
     var step by remember { mutableStateOf<PairStep>(PairStep.Idle) }
-    val accountName = remember { session()?.displayName?.ifBlank { null } ?: "YouTube Music" }
-    val signedIn = remember { session() != null }
+    val hasAnyService = offers.isNotEmpty()
 
     BackHandler(onBack = onBack)
     DisposableEffect(discovery) {
@@ -106,31 +110,39 @@ fun PairWithTvScreen(
         }
     }
 
-    fun send(prepared: PreparedPairing, includeSpotify: Boolean) {
-        val current = session()
-        if (current == null) {
-            prepared.wipe()
-            step = PairStep.Failed("Inicia sesión en YouTube Music en este teléfono primero.")
-            return
-        }
+    fun send(prepared: PreparedPairing, selected: Set<PairingService>) {
         step = PairStep.Sending(prepared.tvName)
-        val payload = PairingSessionPayload.from(current, spotifySpdc().takeIf { includeSpotify })
         scope.launch {
-            step = runCatching { withContext(Dispatchers.IO) { client.send(prepared, payload) } }.fold(
-                onSuccess = { PairStep.Done(prepared.tvName) },
-                onFailure = { PairStep.Failed("La TV rechazó la sesión. Genera un código nuevo en la TV y vuelve a intentarlo.") },
-            )
+            step = try {
+                val payload = withContext(Dispatchers.IO) {
+                    collector.buildPayload(selected) { prepared.provisionBinding() }
+                }
+                withContext(Dispatchers.IO) { client.send(prepared, payload) }
+                PairStep.Done(prepared.tvName)
+            } catch (error: PairingProtocolException) {
+                if (error.errorCode == PairingClient.ERROR_BAD_PAYLOAD) {
+                    PairStep.Failed("Actualiza Orchard en la TV para aceptar estos servicios, o elige menos.")
+                } else {
+                    PairStep.Failed("La TV rechazó la sesión. Genera un código nuevo en la TV y vuelve a intentarlo.")
+                }
+            } catch (error: ProvisionException) {
+                PairStep.Failed(error.message ?: "No se pudo preparar Orchard Connect.")
+            } catch (error: Exception) {
+                PairStep.Failed("La TV rechazó la sesión. Genera un código nuevo en la TV y vuelve a intentarlo.")
+            } finally {
+                prepared.wipe()
+            }
         }
     }
 
-    LaunchedEffect(qrLink, signedIn) {
-        if (qrLink == null || !signedIn) return@LaunchedEffect
+    LaunchedEffect(qrLink, hasAnyService) {
+        if (qrLink == null || !hasAnyService) return@LaunchedEffect
         val info = PairingLinkInbox.take() ?: return@LaunchedEffect
         connect(info.host, info.port, info.tvName, PairingMessages.MODE_QR, info.token, info.fingerprint)
     }
 
-    LaunchedEffect(scanGeneration, signedIn) {
-        if (!signedIn || step !is PairStep.Idle) return@LaunchedEffect
+    LaunchedEffect(scanGeneration, hasAnyService) {
+        if (!hasAnyService || step !is PairStep.Idle) return@LaunchedEffect
         tvs = emptyList()
         scanning = runCatching { discovery.startDiscovery { tvs = it } }.isSuccess
         delay(PairingDiscovery.DEFAULT_TIMEOUT_MS)
@@ -144,8 +156,8 @@ fun PairWithTvScreen(
             Text("Vincular con Android TV", style = MaterialTheme.typography.titleLarge)
         }
         Spacer(Modifier.height(12.dp))
-        if (!signedIn) {
-            Text("Inicia sesión en YouTube Music en este teléfono para vincular una TV.")
+        if (!hasAnyService) {
+            Text("Inicia sesión en YouTube Music u Orchard Connect en este teléfono para vincular una TV.")
         } else {
             Text(
                 "En la TV, abre Orchard › Iniciar sesión. Elige tu TV de la lista o escanea el QR de la TV con la cámara.",
@@ -197,10 +209,9 @@ fun PairWithTvScreen(
         val prepared = confirm.prepared
         PairConfirmDialog(
             tvName = prepared.tvName,
-            accountName = accountName,
-            hasSpotify = spotifySpdc().isNotBlank(),
+            offers = offers,
             sas = prepared.sas.takeIf { prepared.mode == PairingMessages.MODE_SAS },
-            onConfirm = { includeSpotify -> send(prepared, includeSpotify) },
+            onConfirm = { selected -> send(prepared, selected) },
             onCancel = {
                 prepared.wipe()
                 step = PairStep.Idle

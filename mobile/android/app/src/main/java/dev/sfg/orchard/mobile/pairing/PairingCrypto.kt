@@ -17,7 +17,12 @@ import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
 /** Protocol-level failure for the `orchard-pair-v1` handshake and crypto primitives. */
-class PairingProtocolException(message: String, cause: Throwable? = null) : Exception(message, cause)
+/** [errorCode] is the peer's protocol error (`bad_payload`, `bad_token`...) when one was returned. */
+class PairingProtocolException(
+    message: String,
+    cause: Throwable? = null,
+    val errorCode: String? = null,
+) : Exception(message, cause)
 
 /** An ephemeral ECDH P-256 key pair; the public half travels as its X.509 SubjectPublicKeyInfo. */
 class PairingKeyPair(
