@@ -5,6 +5,7 @@
 - **Decisión de origen:** el propietario aprobó la Opción 2 (CastV2 propio, sin Google Play Services) el 2026-10-17. Registro en `AUDIT.md` §5.10 (conflicto C1).
 - **Contrato padre:** `SDD-orchard-audit-fork.md`. Sus invariantes INV-1 a INV-7 siguen vigentes; este documento agrega los invariantes `CAST-INV-*`.
 - **Base de código:** `audited` en `d432ff5`.
+- **Enmiendas aprobadas por el propietario (2026-10-26):** CAST-INV-1 (verificación: clave de meta-data de Android Auto, HU-ORCH-19, `SDD-android-auto.md` D4); CAST-INV-7 y §2.3 (autenticación de dispositivo y pin de clave de dispositivo, HU-ORCH-20, `SDD-castv2-tofu-rotation.md` D1).
 
 ---
 
@@ -39,7 +40,6 @@ Es una excepción aprobada por el propietario a SDD §3.2 ("sin funcionalidades 
 
 - Receptor propio (HTML en un host) y App ID registrado.
 - Video, subtítulos, DRM y `customData` de receptores de terceros.
-- Autenticación de dispositivo (`urn:x-cast:com.google.cast.tp.deviceauth`). El emisor no está obligado a hacerla con `CC1AD845`.
 - IPv6 en la Fase 1.
 - Integración con el selector de salida del sistema (Output Switcher). Depende de `MediaTransferReceiver` de `mediarouter`.
 
@@ -47,13 +47,13 @@ Es una excepción aprobada por el propietario a SDD §3.2 ("sin funcionalidades 
 
 | ID | Invariante | Cómo se verifica |
 | --- | --- | --- |
-| CAST-INV-1 | Cero dependencias propietarias: sin `media3-cast`, `play-services-*`, `com.google.android.gms.*` ni `androidx.mediarouter` | `./gradlew :app:dependencies --configuration releaseRuntimeClasspath` sin `gms`, `play-services` ni `mediarouter`; `git grep com.google.android.gms` vacío en `mobile/` |
+| CAST-INV-1 | Cero dependencias propietarias: sin `media3-cast`, `play-services-*`, `com.google.android.gms.*` ni `androidx.mediarouter` | `./gradlew :app:dependencies --configuration releaseRuntimeClasspath` sin `gms`, `play-services` ni `mediarouter`; `git grep com.google.android.gms` vacío en código y dependencias de `mobile/`; se exceptúa la clave de meta-data `com.google.android.gms.car.application` del manifiesto, que no es una dependencia GMS (HU-ORCH-19) |
 | CAST-INV-2 | Cero servidores externos originados por la app: solo mDNS (`224.0.0.251:5353`), TLS al IP:puerto anunciado y HTTP del receptor al teléfono | Revisión del código de red del paquete `cast`; captura opcional con `tcpdump` en QA manual |
 | CAST-INV-3 | Opt-in: no hay multicast lock, `NsdManager`, socket ni servidor de stream hasta que el usuario abre el selector o pide conectar. La búsqueda se detiene al cerrar el selector o a los 30 s. Al arrancar la app no ocurre nada (H15 sigue cumplido) | Test de `OrchardPlaybackService`/`MainActivity` sin instancias de cast al iniciar; revisión de llamadas a `discoverServices` |
 | CAST-INV-4 | `ChromecastStreamServer` vive solo durante una sesión activa: token de 128 bits con `SecureRandom` nuevo por sesión, escucha en la IPv4 de la LAN, atiende solo al IP del receptor conectado, no lista contenido, responde 404 a todo lo demás y se cierra al terminar la sesión | Tests JVM del servidor (token inválido, IP ajena, cierre) |
 | CAST-INV-5 | App ID fijo `CC1AD845` como constante. Sin campo, string ni propiedad Gradle para cambiarlo | `git grep -i cast_app_id` vacío; test de la constante |
 | CAST-INV-6 | Sin telemetría. Los logs no incluyen token, URL del stream ni `deviceId` completo | Revisión de `Log.*` en el paquete |
-| CAST-INV-7 | Solo se conecta a direcciones privadas (RFC 1918 y link-local; `100.64.0.0/10` no se acepta). TLS sin validar CA (los dispositivos usan certificados autofirmados), con pin TOFU: SHA-256 del certificado guardado por `id` del TXT; si cambia, se aborta y se avisa | Tests del filtro de IP y del pin (primer uso, coincidencia, cambio) |
+| CAST-INV-7 | Solo se conecta a direcciones privadas (RFC 1918 y link-local; `100.64.0.0/10` no se acepta). TLS sin validar CA (los dispositivos usan certificados autofirmados), con pin TOFU del certificado de dispositivo por `id` del TXT, verificado por `deviceauth` en cada conexión (CAST-ROT-INV-1 de `SDD-castv2-tofu-rotation.md`). La renovación del certificado TLS es transparente; un cambio de la clave de dispositivo o un fallo de `deviceauth` aborta y requiere confirmación explícita (CAST-ROT-INV-3) | Tests del filtro de IP y de `SDD-castv2-tofu-rotation.md` §10.1 (primer uso, rotación TLS, migración v1→v2, cambio de clave, fallo de `deviceauth`) |
 | CAST-INV-8 | Mensajes de 64 KiB como máximo, en ambos sentidos. Frame mal formado, longitud excesiva o JSON inválido cierran el canal sin colgar la app | Tests del codec y del lector |
 | CAST-INV-9 | Archivos de menos de 500 líneas (`contributing.md`). Los archivos nuevos llevan cabecera AGPL-3.0-or-later; los del upstream que se modifican conservan la de SFG545 | Revisión QA |
 
@@ -70,7 +70,7 @@ Una implementación que viole un `CAST-INV` o un `INV` del contrato padre no se 
 
 ### 4.2 Transporte y framing
 
-- TCP + TLS al IP:puerto resuelto, timeout de conexión de 5 s. `SSLSocket` con un `TrustManager` que acepta el certificado y luego aplica el pin TOFU (CAST-INV-7).
+- TCP + TLS al IP:puerto resuelto, timeout de conexión de 5 s. `SSLSocket` con un `TrustManager` que acepta y captura el certificado hoja; el pin TOFU se aplica tras `deviceauth` sobre la clave de dispositivo (CAST-INV-7, `SDD-castv2-tofu-rotation.md` §6.2).
 - Cada mensaje: longitud de 4 bytes big-endian (sin signo) seguida del `CastMessage` serializado. Longitud > 65536 = error de protocolo.
 
 ### 4.3 `CastMessage` sin librería de protobuf
@@ -173,7 +173,7 @@ Cada tarea de DeepSeek se entrega con su test y se valida por Claude antes de la
 - [ ] Desconectar devuelve la reproducción al teléfono en la posición conocida y cierra el servidor de stream.
 - [ ] Cortar el Wi-Fi o apagar el dispositivo termina la sesión en ≤ 20 s sin bloquear la app.
 - [ ] El servidor de stream rechaza token inválido e IP distinta del receptor (CAST-INV-4).
-- [ ] Certificado distinto para el mismo `id` aborta la conexión con aviso (CAST-INV-7).
+- [ ] Clave de dispositivo distinta para el mismo `id`, o fallo de `deviceauth`, aborta la conexión y pide confirmación; la rotación del certificado TLS es transparente (CAST-INV-7).
 - [ ] Tests JVM de T1–T7 en verde; `assembleRelease` en verde en Actions.
 - [ ] `AUDIT.md` con el informe QA y C1 cerrado; `UPSTREAM.md` con las zonas nuevas activas.
 

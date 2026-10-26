@@ -14,10 +14,20 @@
 
 ---
 
----
-
 ## 🏗️ In Progress
-_(vacío)_
+_Rama de trabajo: `integrate/hu-orch-19-20-21`._
+
+- [ ] **HU-ORCH-19: Soporte de Navegación y Reproducción Completa en Android Auto** · Issue [#1](https://github.com/jucsp/orchard-audited/issues/1) · `SDD-android-auto.md` 1.0 APROBADO
+  - [Responsable: DeepSeek Dev] Implementar árbol de exploración en `MediaLibraryService` y metadatos `com.google.android.gms.car.application` (`automotive_app_desc.xml`) para habilitar la apertura y navegación de Orchard en la consola del vehículo.
+  - [Responsable: Claude PM/QA] Revisión de manifiesto, validación de que no se introduzcan dependencias privativas y ejecución de tests unitarios.
+
+- [ ] **HU-ORCH-20: Gestión de Rotación de Certificados TLS y Credenciales TOFU en CastV2 (Google Nest Mini)** · Issue [#2](https://github.com/jucsp/orchard-audited/issues/2) · `SDD-castv2-tofu-rotation.md` 1.0 APROBADO
+  - [Responsable: DeepSeek Dev] Diagnosticar y corregir el rechazo de credenciales/certificados en `CastTrust` / `CastSession` ante rotación del certificado TLS autofirmado de Google Nest Mini y validar autorización en `ChromecastStreamServer`.
+  - [Responsable: Claude PM/QA] Auditoría de seguridad del flujo TOFU (`CAST-INV-*`) y validación de tests unitarios de CastV2.
+
+- [ ] **HU-ORCH-21: Propagación Integral de Credenciales (Orchard Connect e Integraciones) vía Login QR en Android TV** · Issue [#3](https://github.com/jucsp/orchard-audited/issues/3) · `SDD-tv-qr-pairing-connect.md` 1.0 APROBADO
+  - [Responsable: DeepSeek Dev] Extender el payload cifrado `orchard-pair-v1` para transferir la sesión/tokens de Orchard Connect junto con todas las integraciones activas (YouTube Music, Spotify, Qobuz) e inicializar Orchard Connect en Android TV al completar el emparejamiento QR.
+  - [Responsable: Claude PM/QA] Adaptar UI de confirmación en móvil/TV, verificar invariantes `PAIR-INV-1` a `PAIR-INV-8` y validar suite de pruebas unitarias de emparejamiento.
 
 ---
 
