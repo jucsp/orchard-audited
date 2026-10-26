@@ -40,6 +40,7 @@ import dev.sfg.orchard.connect.app.MainActivity
 import dev.sfg.orchard.mobile.OrchardGraph
 import dev.sfg.orchard.mobile.cast.SharedPreferencesCastTrustStore
 import dev.sfg.orchard.mobile.model.Track
+import dev.sfg.orchard.mobile.playback.auto.GraphBrowseSource
 import dev.sfg.orchard.mobile.playback.smart.CrossfadeMode
 import dev.sfg.orchard.mobile.playback.smart.MixSplicer
 import dev.sfg.orchard.mobile.playback.smart.TransitionFilter
@@ -107,7 +108,7 @@ class OrchardPlaybackService : MediaLibraryService() {
         super.onCreate()
         stateStore = PlaybackStateStore(this)
         val graph = OrchardGraph.from(this)
-        val browseTree = OrchardMediaLibrary(graph)
+        val browseTree = OrchardMediaLibrary(GraphBrowseSource(graph))
         streamResolver = graph.streams
         streamResolver.trackLookup = ::queueTrack
         streamResolver.warmUp()

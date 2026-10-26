@@ -15,4 +15,14 @@
   <string name="widget_play_track">Play %1$s by %2$s</string>
   <string name="widget_player_description">Artwork-tinted playback controls that resize from compact to expanded.</string>
   <string name="widget_recent_description">Quickly play your four most recent tracks.</string>
+  <string name="auto_title">Android Auto</string>
+  <string name="auto_ready">Lista para Android Auto</string>
+  <string name="auto_unknown_sources">Instalada fuera de Google Play: Android Auto la oculta hasta activar Fuentes desconocidas</string>
+  <string name="auto_installer">Instalador detectado: %1$s</string>
+  <string name="auto_installer_unknown">desconocido</string>
+  <string name="auto_steps_title">Cómo habilitarla</string>
+  <string name="auto_step_developer">1. En el teléfono abre Ajustes de Android Auto y toca 10 veces «Versión» para activar el modo desarrollador.</string>
+  <string name="auto_step_unknown_sources">2. Menú ⋮ → Configuración para desarrolladores → activa «Fuentes desconocidas».</string>
+  <string name="auto_step_reconnect">3. Desconecta y vuelve a conectar el teléfono al auto.</string>
+  <string name="auto_step_launcher">4. Si Orchard no aparece, agrégala en Ajustes de Android Auto → Personalizar lanzador.</string>
 </resources>

@@ -43,6 +43,7 @@ import dev.sfg.orchard.mobile.listenbrainz.ListenBrainzState
 import dev.sfg.orchard.mobile.model.OrchardSettings
 import dev.sfg.orchard.mobile.qobuz.QobuzQuality
 import dev.sfg.orchard.mobile.qobuz.QobuzStatus
+import dev.sfg.orchard.mobile.ui.tv.isTvLayout
 
 /** Services listed under Connections; each opens its own detail page. */
 internal enum class ConnectionService(val title: String, val blurb: String) {
@@ -120,19 +121,26 @@ internal fun ConnectionsList(
             }
         }
     }
-    if (onPairTv != null) {
+    val showAuto = !isTvLayout()
+    if (onPairTv != null || showAuto) {
         SectionLabel("Devices", 4)
         SettingsPanel(index = 5) {
-            SettingsRow(
-                title = "Vincular con Android TV",
-                subtitle = "Inicia sesión en la TV con esta cuenta",
-                modifier = Modifier.clickable(onClick = onPairTv),
-            ) {
-                Icon(
-                    Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                    contentDescription = null,
-                    tint = SettingsStyle.Chevron,
-                )
+            if (onPairTv != null) {
+                SettingsRow(
+                    title = "Vincular con Android TV",
+                    subtitle = "Envía a la TV las cuentas de este teléfono",
+                    modifier = Modifier.clickable(onClick = onPairTv),
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = SettingsStyle.Chevron,
+                    )
+                }
+            }
+            if (showAuto) {
+                if (onPairTv != null) PanelDivider()
+                AndroidAutoSettingsRow()
             }
         }
     }

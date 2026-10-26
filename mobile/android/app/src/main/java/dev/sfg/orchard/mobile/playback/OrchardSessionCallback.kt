@@ -42,6 +42,9 @@ import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.SettableFuture
 import dev.sfg.orchard.connect.R
+import dev.sfg.orchard.mobile.model.Track
+import dev.sfg.orchard.mobile.playback.auto.AutoControllerPolicy
+import dev.sfg.orchard.mobile.playback.auto.AutoSearchPaging
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -64,6 +67,21 @@ internal fun Player.skipPrevious() {
     resume()
 }
 
+/** Maps a browse failure to the error Android Auto can surface, without leaking provider details. */
+internal fun Throwable.toBrowseSessionError(): SessionError = when (this) {
+    is BrowseFailure.AuthRequired ->
+        SessionError(SessionError.ERROR_SESSION_AUTHENTICATION_EXPIRED, "Inicia sesión en Orchard desde el teléfono")
+    else -> SessionError(SessionError.ERROR_IO, "No se pudo cargar el catálogo.")
+}
+
+/** Search ids embed the raw query; anything else is a fixed node or provider id safe to log. */
+internal fun redactNode(mediaId: String): String =
+    if (mediaId.startsWith(OrchardMediaLibrary.SEARCH_PREFIX)) "search" else mediaId
+
+/** The one track a recent-root resume can play, or null when nothing durable was saved. */
+internal fun RestoredPlayback.resumableTrack(): Track? =
+    queue.getOrNull(currentIndex.coerceAtLeast(0)) ?: queue.firstOrNull()
+
 /** Library browsing, car and Assistant requests, media keys, and Orchard's custom commands. */
 @UnstableApi
 internal class OrchardSessionCallback(
@@ -77,15 +95,23 @@ internal class OrchardSessionCallback(
     private val onLayoutChanged: () -> Unit,
 ) : MediaLibrarySession.Callback {
 
+    private fun canBrowse(controller: MediaSession.ControllerInfo): Boolean =
+        AutoControllerPolicy.canBrowse(packageName, controller.packageName, controller.isTrusted)
+
     override fun onGetLibraryRoot(
         session: MediaLibrarySession,
         browser: MediaSession.ControllerInfo,
         params: MediaLibraryService.LibraryParams?,
     ): ListenableFuture<LibraryResult<MediaItem>> {
+        if (!canBrowse(browser)) {
+            return Futures.immediateFuture(LibraryResult.ofError(SessionError.ERROR_PERMISSION_DENIED))
+        }
         val rootParams = MediaLibraryService.LibraryParams.Builder()
             .setExtras(OrchardMediaLibrary.rootExtras())
+            .setRecent(params?.isRecent == true)
             .build()
-        return Futures.immediateFuture(LibraryResult.ofItem(browseTree.root(), rootParams))
+        val root = if (params?.isRecent == true) OrchardMediaLibrary.recentRootItem() else browseTree.root()
+        return Futures.immediateFuture(LibraryResult.ofItem(root, rootParams))
     }
 
     override fun onGetChildren(
@@ -96,14 +122,30 @@ internal class OrchardSessionCallback(
         pageSize: Int,
         params: MediaLibraryService.LibraryParams?,
     ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
+        if (!canBrowse(browser)) {
+            return Futures.immediateFuture(LibraryResult.ofError(SessionError.ERROR_PERMISSION_DENIED))
+        }
+        if (parentId == OrchardMediaLibrary.RECENT_ROOT) {
+            val item = stateStore.load().resumableTrack()?.let(MediaItemMapper::toMediaItem)
+            return Futures.immediateFuture(
+                if (item == null) LibraryResult.ofError(SessionError.ERROR_NOT_SUPPORTED)
+                else LibraryResult.ofItemList(listOf(item), params)
+            )
+        }
         val future = SettableFuture.create<LibraryResult<ImmutableList<MediaItem>>>()
         browseScope.launch {
             val result = runCatching { browseTree.children(parentId) }
-                .onFailure { Log.w(TAG, "Browse of $parentId failed", it) }
-                .getOrDefault(emptyList())
-            // A playlist can run to thousands of rows; hand back only the window asked for.
-            val window = result.drop(page * pageSize).take(pageSize)
-            future.set(LibraryResult.ofItemList(ImmutableList.copyOf(window), params))
+                .fold(
+                    onSuccess = { items ->
+                        LibraryResult.ofItemList(ImmutableList.copyOf(AutoSearchPaging.page(items, page, pageSize)), params)
+                    },
+                    onFailure = { error ->
+                        // Type only: provider exceptions can carry URLs with the query (AUTO-INV-6).
+                        Log.w(TAG, "Browse of ${redactNode(parentId)} failed: ${error.javaClass.simpleName}")
+                        LibraryResult.ofError(error.toBrowseSessionError())
+                    },
+                )
+            future.set(result)
         }
         return future
     }
@@ -113,6 +155,9 @@ internal class OrchardSessionCallback(
         browser: MediaSession.ControllerInfo,
         mediaId: String,
     ): ListenableFuture<LibraryResult<MediaItem>> {
+        if (!canBrowse(browser)) {
+            return Futures.immediateFuture(LibraryResult.ofError(SessionError.ERROR_PERMISSION_DENIED))
+        }
         val item = browseTree.item(mediaId)
         return Futures.immediateFuture(
             if (item == null) LibraryResult.ofError(SessionError.ERROR_BAD_VALUE)
@@ -120,13 +165,70 @@ internal class OrchardSessionCallback(
         )
     }
 
+    override fun onSearch(
+        session: MediaLibrarySession,
+        browser: MediaSession.ControllerInfo,
+        query: String,
+        params: MediaLibraryService.LibraryParams?,
+    ): ListenableFuture<LibraryResult<Void>> {
+        if (!canBrowse(browser)) {
+            return Futures.immediateFuture(LibraryResult.ofError(SessionError.ERROR_PERMISSION_DENIED))
+        }
+        val sanitized = AutoSearchPaging.sanitizeQuery(query)
+        val future = SettableFuture.create<LibraryResult<Void>>()
+        browseScope.launch {
+            val result = runCatching { browseTree.search(sanitized) }
+                .fold(
+                    onSuccess = { found ->
+                        session.notifySearchResultChanged(browser, sanitized, found.size, params)
+                        LibraryResult.ofVoid()
+                    },
+                    onFailure = { error -> LibraryResult.ofError(error.toBrowseSessionError()) },
+                )
+            future.set(result)
+        }
+        return future
+    }
+
+    override fun onGetSearchResult(
+        session: MediaLibrarySession,
+        browser: MediaSession.ControllerInfo,
+        query: String,
+        page: Int,
+        pageSize: Int,
+        params: MediaLibraryService.LibraryParams?,
+    ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
+        if (!canBrowse(browser)) {
+            return Futures.immediateFuture(LibraryResult.ofError(SessionError.ERROR_PERMISSION_DENIED))
+        }
+        val sanitized = AutoSearchPaging.sanitizeQuery(query)
+        val future = SettableFuture.create<LibraryResult<ImmutableList<MediaItem>>>()
+        browseScope.launch {
+            val result = runCatching { browseTree.search(sanitized) }
+                .fold(
+                    onSuccess = { found ->
+                        LibraryResult.ofItemList(ImmutableList.copyOf(AutoSearchPaging.page(found, page, pageSize)), params)
+                    },
+                    onFailure = { error -> LibraryResult.ofError(error.toBrowseSessionError()) },
+                )
+            future.set(result)
+        }
+        return future
+    }
+
     override fun onConnect(
         session: MediaSession,
         controller: MediaSession.ControllerInfo,
     ): MediaSession.ConnectionResult {
         // MediaLibraryServiceLegacyStub.onGetRoot returns null unless the controller holds
-        // COMMAND_CODE_LIBRARY_GET_LIBRARY_ROOT, and Android Auto then spins with no error.
-        val sessionCommands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS.buildUpon()
+        // COMMAND_CODE_LIBRARY_GET_LIBRARY_ROOT, and Android Auto then spins with no error. A
+        // controller that cannot browse still gets transport and shuffle/repeat, just no library.
+        val baseCommands = if (canBrowse(controller)) {
+            MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS
+        } else {
+            MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS
+        }
+        val sessionCommands = baseCommands.buildUpon()
             .add(COMMAND_TOGGLE_SHUFFLE)
             .add(COMMAND_TOGGLE_REPEAT)
             .add(COMMAND_SET_VIDEO_MODE)
@@ -209,22 +311,27 @@ internal class OrchardSessionCallback(
         startIndex: Int,
         startPositionMs: Long,
     ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
-        Log.d(TAG, "onSetMediaItems: ${mediaItems.size} items, startIndex=$startIndex, pos=$startPositionMs; " +
-            "rawIds=${mediaItems.map { it.mediaId }}")
+        Log.d(TAG, "onSetMediaItems: ${mediaItems.size} items, startIndex=$startIndex, pos=$startPositionMs")
         // Assistant knows no media ids, so a voice request is an item carrying only a search query.
         val spoken = mediaItems.singleOrNull()?.takeIf { it.mediaId.isBlank() }?.requestMetadata?.searchQuery
+        // Search and expansion read the library, so they follow the browse policy (AUTO-INV-4).
+        val mayBrowse = canBrowse(controller)
         if (spoken != null) {
+            if (!mayBrowse) return Futures.immediateFailedFuture(UnsupportedOperationException())
             val future = SettableFuture.create<MediaSession.MediaItemsWithStartPosition>()
             browseScope.launch {
-                val found = browseTree.search(spoken)
-                Log.d(TAG, "onSetMediaItems: search '$spoken' -> ${found.size} tracks")
-                future.set(MediaSession.MediaItemsWithStartPosition(found.map(::resolveMediaItem), 0, C.TIME_UNSET))
+                runCatching { browseTree.search(AutoSearchPaging.sanitizeQuery(spoken)) }
+                    .onSuccess { found ->
+                        Log.d(TAG, "onSetMediaItems: voice search -> ${found.size} tracks")
+                        future.set(MediaSession.MediaItemsWithStartPosition(found.map(::resolveMediaItem), 0, C.TIME_UNSET))
+                    }
+                    .onFailure { future.setException(it) }
             }
             return future
         }
         // A car browser sends back the single row that was tapped. Orchard's own UI always sends
         // the queue it means to play, so only an outside controller gets its selection expanded.
-        val expanded = if (controller.packageName != packageName && mediaItems.size == 1) {
+        val expanded = if (mayBrowse && controller.packageName != packageName && mediaItems.size == 1) {
             browseTree.queueFor(mediaItems.single().mediaId)
         } else null
         if (expanded != null) {
@@ -235,7 +342,7 @@ internal class OrchardSessionCallback(
             )
         }
         val updated = mediaItems.map(::resolveMediaItem)
-        Log.d(TAG, "onSetMediaItems: resolved ${updated.map { "${it.mediaId}->${it.localConfiguration?.uri}" }}")
+        Log.d(TAG, "onSetMediaItems: resolved ${updated.size} items")
         return Futures.immediateFuture(MediaSession.MediaItemsWithStartPosition(updated, startIndex, startPositionMs))
     }
 
