@@ -150,3 +150,24 @@ Rama `integrate/v1.0.0-canary.9-audited.26`. Informe QA en `AUDIT.md` §5.15.
   - Android: sección `library-podcasts` separada de las playlists en `LibraryRepository`, `savedPodcasts` en `LibraryCache`, `LibraryFilter.PODCASTS` en móvil y TV; en `ProviderModels.kt` los episodios tienen prioridad sobre el prefijo `MPSP`.
 - **Verificación:** 187/187 tests en `providers/youtube` (`npm test`). Kotlin sin compilar en local (sin Android SDK); queda para CI.
 - **Pendiente:** compilación y `testDebugUnitTest` en CI; probar el filtro de podcasts contra YouTube real; sesión cifrada huérfana si se inicia sesión con la sesión única antigua aún presente (se limpia en el próximo `clearAll`).
+
+## 13. Android Auto, CastV2 deviceauth y Orchard Connect vía QR (HU-ORCH-19, 20 y 21)
+Rama `integrate/hu-orch-19-20-21`. Contratos `SDD-android-auto.md`, `SDD-castv2-tofu-rotation.md` y `SDD-tv-qr-pairing-connect.md` (1.0 APROBADO). Informe QA en `AUDIT.md` §5.16.
+
+### Android Auto (HU-ORCH-19)
+- **`MediaLibraryService`:** `OrchardPlaybackService` hereda de `MediaLibraryService` de Media3 y delega el árbol de navegación en `OrchardMediaLibrary` (fuente `OrchardBrowseSource` sobre `OrchardGraph`). Callbacks: `onGetLibraryRoot` (raíz con Inicio/Biblioteca/Álbumes/Podcasts/Recientes), `onGetChildren`, `onGetItem`, `onSearch` y `onGetSearchResult`. `isRecent` se sirve desde el estado de reproducción (`PlaybackStateStore`).
+- **Política de controladores:** `AutoControllerPolicy` (`playback/auto/`) decide quién navega la biblioteca (app propia, asistentes del vehículo y fuentes de confianza) y quién solo recibe transporte (`DEFAULT_SESSION_COMMANDS`). `AutoSearchPaging` pagina y cachea resultados de búsqueda.
+- **Descriptor automotriz:** `res/xml/automotive_app_desc.xml` + meta-data `com.google.android.gms.car.application` en `AndroidManifest.xml` (clave del manifest, sin dependencia GMS). `AutoInstallSource` detecta el instalador y `AndroidAutoSettingsRow` muestra instrucciones de "Fuentes desconocidas" cuando no es `com.android.vending`.
+
+### CastV2 deviceauth (HU-ORCH-20)
+- **Problema:** el certificado TLS hoja del Nest Mini rota cada pocos días; el pin TOFU v1 (hash del TLS) quedaba inválido y la app rechazaba la conexión sin salida.
+- **Solución:** `CastDeviceAuth` codifica/decodifica `DeviceAuthMessage` (proto2 manual) sobre `payloadBinary` en el namespace `urn:x-cast:com.google.cast.tp.deviceauth`. Verifica la firma RSA ≥ 2048 del certificado de dispositivo (`client_auth_certificate`) sobre `sender_nonce ‖ DER(certTLS)` con `SHA256withRSA` (fallback `SHA1withRSA` solo si el receptor responde SHA1).
+- **`pinDk`:** SHA-256 del SPKI de la clave de dispositivo. `CastTrust.evaluateDeviceAuth` implementa la tabla de §6.2: primer uso confía; cambio de `pinDk` lanza `CastDeviceKeyChangedException`; migración v1→v2 transparente si `deviceauth` verifica (aunque el TLS haya rotado). `SharedPreferencesCastTrustStore` usa claves `dk:<id>` (v2) y `<id>` (v1) con `commit()` síncrono y `forget`. `CastTrustChangedDialog` y "Olvidar dispositivo" evitan que un parlante quede bloqueado.
+
+### Orchard Connect en Android TV y QR pairing v2 (HU-ORCH-21)
+- **Problema:** la TV no podía iniciar Orchard Connect (sin navegador externo y el token no se puede reutilizar por la rotación del servidor).
+- **Aprovisionamiento (Worker):** `POST /devices/provision` emite un código de un solo uso (32 bytes, SHA-256 en D1, 120 s, máx 5 vivos) ligado a un `binding` base64url de 32 bytes. `POST /auth/token` con `grant_type=urn:orchard:grant-type:provision` consume el código atómicamente (`DELETE ... RETURNING *`) y registra la TV como dispositivo propio.
+- **Payload `v=2`:** `PairingPayload` extiende `orchard-pair-v1` con bloques opcionales (`youtube`, `spotify`, `orchardConnect`, `qobuz`, `translationKeys`) y mantiene compatibilidad v1. `PairingCredentialCollector` recolecta en el móvil; `PairingSessionApplier` aplica en la TV con aislamiento por servicio (el fallo de uno no detiene al resto) y limpia buffers.
+- **Seguridad:** canal E2EE AES-256-GCM solo LAN (PAIR-INV-1); consentimiento por servicio en el diálogo; `QobuzRepository` cifra `qobuz_token` con `AndroidKeystoreCipher` (alias `orchard_qobuz_token_v1`) y migra texto plano; `OrchardAccountProvisioning` calcula el binding desde el hash de transcripción.
+- **UI:** casillas por servicio en `PairConfirmDialog`/`PairWithTvScreen` (YouTube/Connect/Spotify/Qobuz por defecto, BYOK desmarcado), `TvPairingConfirmDialog` con foco en Cancelar y sección "Orchard Connect" en Ajustes TV.
+- **Verificación:** 84/84 tests `npm test` en `services/account`. Tests JVM de Android pendientes de CI.

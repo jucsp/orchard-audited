@@ -631,3 +631,40 @@ Sin tests: `CastDiscovery` (depende de `NsdManager`), `CastV2Player` y `CastCont
 - Filtro de podcasts `EgWKAQJQAQ%3D%3D` contra YouTube Music real.
 - Pruebas manuales en TV: cambio de cuenta, migración de la sesión única y video musical.
 - Observación abierta: si se inicia sesión con la sesión única antigua aún presente, esa credencial cifrada queda huérfana hasta el próximo `clearAll`.
+
+### 5.16 Android Auto, CastV2 deviceauth y Orchard Connect vía QR (HU-ORCH-19, 20 y 21, 2026-10-26)
+
+- **Base:** rama `integrate/hu-orch-19-20-21`, cambios sin commit en el árbol de trabajo (desarrollo por DeepSeek Dev + UI/cableado por Claude PM/QA).
+- **Contratos:** `SDD-android-auto.md`, `SDD-castv2-tofu-rotation.md` y `SDD-tv-qr-pairing-connect.md`, los tres en `1.0 · 2026-10-26 · APROBADO` (invariantes `AUTO-INV-1..8`, `CAST-INV-1..9` + `CAST-ROT-INV-1..9`, `PAIR-INV-1..8` + `PAIR-CONN-INV-1..9`).
+- **Auditor:** DeepSeek (PM/QA Backup, Regla 5) ante la indisponibilidad de Claude. Método: revisión estática línea a línea, contraste de firmas contra el código existente y `npm test` en `services/account`. Esta máquina no tiene Android SDK ni `kotlinc`: **no se compiló Kotlin ni se ejecutó la suite JVM de Android**.
+- **Veredicto: APROBADO (temporal por DeepSeek PM/QA Backup)**, condicionado a CI verde y a la validación en hardware del propietario (V0/T0 post-release).
+
+#### 5.16.1 Qué se verificó
+
+| HU | Componente | Verificación estática |
+| --- | --- | --- |
+| HU-ORCH-19 | `MediaLibraryService` | `OrchardPlaybackService : MediaLibraryService` con `onGetLibraryRoot`/`onGetChildren`/`onGetItem`/`onSearch`/`onGetSearchResult`; árbol con Inicio/Biblioteca/Álbumes/Podcasts/Recientes; `isRecent` servido desde el estado de reproducción |
+| HU-ORCH-19 | Búsqueda y política | `AutoSearchPaging` con caché y paginación; `AutoControllerPolicy` concede `DEFAULT_SESSION_AND_LIBRARY_COMMANDS` solo a la app propia, asistentes del vehículo y fuentes de confianza; el resto recibe solo transporte |
+| HU-ORCH-19 | Descriptor automotriz | `res/xml/automotive_app_desc.xml` + meta-data `com.google.android.gms.car.application` en `AndroidManifest.xml` (clave del manifest, no dependencia GMS — enmienda CAST-INV-1); `AutoInstallSource`/`AndroidAutoSettingsRow` muestran instrucciones de "Fuentes desconocidas" cuando el instalador no es `com.android.vending` |
+| HU-ORCH-20 | `deviceauth` | `CastDeviceAuth` codifica/decodifica `DeviceAuthMessage` (proto2 manual), `generateNonce()` de 16 bytes con `SecureRandom`, verificación RSA ≥ 2048 con `SHA256withRSA` y fallback `SHA1withRSA` solo si el receptor responde SHA1; límites CAST-ROT-INV-6 |
+| HU-ORCH-20 | Almacén v2 y migración | `CastTrust.evaluateDeviceAuth` implementa las 5 filas de §6.2 con migración v1→v2 transparente (`migrateV1ToV2` con un único `commit()`); `payloadBinary` en `CastMessage`; `CastTrustChangedDialog` y "Olvidar dispositivo" en móvil/TV |
+| HU-ORCH-21 | Worker | `services/account/migrations/0005_provision.sql` + `src/provision.js`: código de un solo uso de 32 bytes (SHA-256 en D1), 120 s, máx 5 vivos por usuario, `DELETE ... RETURNING *` atómico, binding base64url de 32 bytes; `npm test` 84/84 |
+| HU-ORCH-21 | Cliente | `OrchardAccountProvisioning` (binding, solicitud y canje), `PairingPayload` v2 con bloques opcionales y compatibilidad v1, `PairingCredentialCollector`/`PairingSessionApplier` con aislamiento por servicio, `QobuzRepository` con `AndroidKeystoreCipher` (alias `orchard_qobuz_token_v1`) y migración de texto plano |
+| HU-ORCH-21 | UI | `PairConfirmDialog`/`PairWithTvScreen` (casillas por servicio, YouTube/Connect/Spotify/Qobuz por defecto, BYOK desmarcado), `TvPairingConfirmDialog` con foco inicial en Cancelar, sección "Orchard Connect" en Ajustes TV |
+
+#### 5.16.2 Invariantes
+
+| Invariante | Resultado |
+| --- | --- |
+| AUTO-INV-1..8 | ✅ estático (MediaLibraryService y descriptor automotriz sin GMS; control de acceso; logs saneados; archivos < 500 líneas con SPDX) |
+| CAST-INV-1..9 + CAST-ROT-INV-1..9 | ✅ estático (sin dependencias propietarias; solo LAN; opt-in; pin por SPKI de clave de dispositivo con migración v1→v2; sin telemetría) |
+| PAIR-INV-1..8 + PAIR-CONN-INV-1..9 | ✅ estático (canal E2EE AES-256-GCM solo LAN; consentimiento por servicio; códigos de un solo uso; aislamiento de fallos; sin secretos en logs/`toString()`) |
+
+#### 5.16.3 Qué NO se verificó
+
+- Compilación Kotlin y tests JVM de Android: sin Android SDK en esta máquina. Queda para CI (`testDebugUnitTest`, `compileReleaseKotlin`, `assembleRelease`).
+- **V0 (Android Auto)** y **T0 (Nest Mini)**: validación en hardware real del propietario, post-release (auto físico y parlante físico). No bloquean la implementación; bloquean el cierre de la HU.
+- Prueba del flujo `deviceauth` contra el Nest Mini real (captura del intercambio en LAN).
+- QA manual de la UI de emparejamiento v2 en móvil y TV.
+
+**Bloqueantes para llevar `integrate/hu-orch-19-20-21` a `audited`:** CI Android verde y la constancia del propietario de V0/T0.

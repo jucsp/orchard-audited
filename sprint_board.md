@@ -15,19 +15,7 @@
 ---
 
 ## 🏗️ In Progress
-_Rama de trabajo: `integrate/hu-orch-19-20-21`._
-
-- [ ] **HU-ORCH-19: Soporte de Navegación y Reproducción Completa en Android Auto** · Issue [#1](https://github.com/jucsp/orchard-audited/issues/1) · `SDD-android-auto.md` 1.0 APROBADO
-  - [Responsable: DeepSeek Dev] Implementar árbol de exploración en `MediaLibraryService` y metadatos `com.google.android.gms.car.application` (`automotive_app_desc.xml`) para habilitar la apertura y navegación de Orchard en la consola del vehículo.
-  - [Responsable: Claude PM/QA] Revisión de manifiesto, validación de que no se introduzcan dependencias privativas y ejecución de tests unitarios.
-
-- [ ] **HU-ORCH-20: Gestión de Rotación de Certificados TLS y Credenciales TOFU en CastV2 (Google Nest Mini)** · Issue [#2](https://github.com/jucsp/orchard-audited/issues/2) · `SDD-castv2-tofu-rotation.md` 1.0 APROBADO
-  - [Responsable: DeepSeek Dev] Diagnosticar y corregir el rechazo de credenciales/certificados en `CastTrust` / `CastSession` ante rotación del certificado TLS autofirmado de Google Nest Mini y validar autorización en `ChromecastStreamServer`.
-  - [Responsable: Claude PM/QA] Auditoría de seguridad del flujo TOFU (`CAST-INV-*`) y validación de tests unitarios de CastV2.
-
-- [ ] **HU-ORCH-21: Propagación Integral de Credenciales (Orchard Connect e Integraciones) vía Login QR en Android TV** · Issue [#3](https://github.com/jucsp/orchard-audited/issues/3) · `SDD-tv-qr-pairing-connect.md` 1.0 APROBADO
-  - [Responsable: DeepSeek Dev] Extender el payload cifrado `orchard-pair-v1` para transferir la sesión/tokens de Orchard Connect junto con todas las integraciones activas (YouTube Music, Spotify, Qobuz) e inicializar Orchard Connect en Android TV al completar el emparejamiento QR.
-  - [Responsable: Claude PM/QA] Adaptar UI de confirmación en móvil/TV, verificar invariantes `PAIR-INV-1` a `PAIR-INV-8` y validar suite de pruebas unitarias de emparejamiento.
+_(vacío)_
 
 ---
 
@@ -37,6 +25,21 @@ _(vacío)_
 ---
 
 ## ✅ Done
+- [x] **HU-ORCH-19: Soporte de Navegación y Reproducción Completa en Android Auto** · Issue [#1](https://github.com/jucsp/orchard-audited/issues/1) `[Responsables: DeepSeek Dev & Claude PM/QA]`
+  - `OrchardPlaybackService` como `MediaLibraryService` con árbol Inicio/Biblioteca/Álbumes/Podcasts/Recientes, búsqueda en pantalla y `isRecent` desde el estado de reproducción.
+  - Política de controladores `AutoControllerPolicy`: solo la app propia, asistentes del vehículo y fuentes de confianza navegan la biblioteca; el resto recibe solo comandos de transporte.
+  - Descriptor `automotive_app_desc.xml` y meta-data `com.google.android.gms.car.application` (sin dependencias GMS); fila "Android Auto" en Ajustes con diagnóstico de `AutoInstallSource` e instrucciones de "Fuentes desconocidas".
+  - Tests JVM: `AutoControllerPolicyTest`, `OrchardMediaLibraryTest` y `OrchardSessionCallbackAutoTest`.
+- [x] **HU-ORCH-20: Gestión de Rotación de Certificados TLS y Credenciales TOFU en CastV2 (Google Nest Mini)** · Issue [#2](https://github.com/jucsp/orchard-audited/issues/2) `[Responsables: DeepSeek Dev & Claude PM/QA]`
+  - `CastDeviceAuth` (desafío/respuesta `urn:x-cast:com.google.cast.tp.deviceauth`) con verificación RSA ≥ 2048, `SHA256withRSA` y fallback `SHA1withRSA`; `payloadBinary` habilitado en `CastMessage`.
+  - `CastTrust.evaluateDeviceAuth` con migración v1→v2 transparente (pin de SPKI de la clave de dispositivo) y `SharedPreferencesCastTrustStore` con claves `dk:<id>` y `forget`.
+  - `CastTrustChangedDialog` y acción "Olvidar dispositivo" en móvil/TV ante cambio de `pinDk` o fallo de `deviceauth`.
+  - Tests JVM: `CastDeviceAuthTest`, `CastTrustTest`, `CastSessionTest` y `SharedPreferencesCastTrustStoreTest` actualizados.
+- [x] **HU-ORCH-21: Propagación Integral de Credenciales (Orchard Connect e Integraciones) vía Login QR en Android TV** · Issue [#3](https://github.com/jucsp/orchard-audited/issues/3) `[Responsables: DeepSeek Dev & Claude PM/QA]`
+  - Worker: migración `0005_provision.sql` + `src/provision.js` (código de un solo uso SHA-256, 120 s, máx 5 vivos, canje atómico); 84/84 tests `npm test`.
+  - Cliente: `OrchardAccountProvisioning`, `PairingPayload` v2 con bloques opcionales y compatibilidad v1, `PairingCredentialCollector`/`PairingSessionApplier` con aislamiento por servicio, `QobuzRepository` cifrado con `AndroidKeystoreCipher`.
+  - UI: `PairConfirmDialog`/`PairWithTvScreen` (casillas por servicio, BYOK desmarcado), `TvPairingConfirmDialog` con foco en Cancelar y sección "Orchard Connect" en Ajustes TV.
+  - Tests JVM: `PairingPayloadV2Test`, `PairingSessionApplierTest`, `QobuzRepositoryTest` y `OrchardAccountProvisioningTest`.
 - [x] **HU-ORCH-16: Corrección de pantalla negra en video musical y playhead continuo (Android TV)** `[Responsables: DeepSeek Dev & Claude PM/QA]`
   - Abrir el video desde el reproductor activa el modo video antes de navegar a `TvRoutes.MUSIC_VIDEO`; salir con Atrás, Cerrar o "Volver a la canción" lo desactiva.
   - La posición se conserva: `switchVideoSource` cambia la fuente sin reiniciar el reproductor.
