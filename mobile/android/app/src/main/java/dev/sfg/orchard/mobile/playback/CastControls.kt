@@ -18,10 +18,20 @@ data class CastStatus(
     val volume: Float = 1f,
     val muted: Boolean = false,
     val error: String? = null,
+    val pendingTrustPrompt: CastTrustPrompt? = null,
 ) {
     val connected: Boolean
         get() = device != null && !connecting
 }
+
+/** Trust conflict surfaced to the UI instead of a plain error string (CAST-ROT-INV-3). */
+data class CastTrustPrompt(
+    val device: CastDevice,
+    val previousPinShort: String?,
+    val newPinShort: String?,
+    val isDeviceKey: Boolean,
+    val reason: String? = null,
+)
 
 /**
  * The playback service side, called on the main thread. [chromecast] builds on first use, so
@@ -86,6 +96,9 @@ class CastControls {
                 mutableStatus.value = CastStatus(error = message)
                 host.onCastError(message)
             },
+            onTrustPrompt = { prompt ->
+                mutableStatus.value = CastStatus(pendingTrustPrompt = prompt)
+            },
         )
     }
 
@@ -108,6 +121,33 @@ class CastControls {
 
     fun clearError() {
         if (mutableStatus.value.error != null) mutableStatus.value = mutableStatus.value.copy(error = null)
+    }
+
+    /** User confirmed the pending trust prompt; re-connects to the same device. */
+    fun confirmDeviceTrust() {
+        val prompt = mutableStatus.value.pendingTrustPrompt ?: return
+        active?.confirmDeviceTrust()
+        mutableStatus.value = CastStatus()
+        connect(prompt.device)
+    }
+
+    /** User cancelled the pending trust prompt; nothing is written to the store. */
+    fun cancelDeviceTrust() {
+        active?.cancelDeviceTrust()
+        if (mutableStatus.value.pendingTrustPrompt != null) {
+            mutableStatus.value = mutableStatus.value.copy(pendingTrustPrompt = null)
+        }
+    }
+
+    /**
+     * Drops any pending prompt for the device and the pins held by the active playback. The UI
+     * also clears the persistent store, so this works before any connection in this process.
+     */
+    fun forgetDevice(deviceId: String) {
+        active?.forgetDeviceTrust(deviceId)
+        if (mutableStatus.value.pendingTrustPrompt?.device?.id == deviceId) {
+            mutableStatus.value = mutableStatus.value.copy(pendingTrustPrompt = null)
+        }
     }
 
     /** Receiver volume changes from the device buttons, other senders or the notification. */

@@ -9,6 +9,7 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.net.InetSocketAddress
 import java.net.Socket
+import java.security.cert.X509Certificate
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
@@ -42,6 +43,13 @@ class CastChannel(
 
     /** Called once when the channel closes; the cause is null for a local [close]. */
     var onClose: ((Throwable?) -> Unit)? = null
+
+    /**
+     * DER of the TLS leaf captured after the handshake, exposed for the
+     * `deviceauth` exchange. Null on plain-TCP transports (tests) unless set by
+     * the caller before the session authenticates.
+     */
+    var peerLeafCertificateDer: ByteArray? = null
 
     private val writeLock = Any()
     private val closed = AtomicBoolean(false)
@@ -77,6 +85,10 @@ class CastChannel(
                 newSocket.soTimeout = connectionTimeoutMs
                 newSocket.startHandshake()
                 newSocket.soTimeout = 0
+                peerLeafCertificateDer = newSocket.session.peerCertificates
+                    ?.filterIsInstance<X509Certificate>()
+                    ?.firstOrNull()
+                    ?.encoded
             }
             newSocket.getOutputStream()
         } catch (e: Exception) {

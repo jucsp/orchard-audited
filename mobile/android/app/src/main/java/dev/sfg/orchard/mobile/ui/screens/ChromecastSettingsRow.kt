@@ -39,6 +39,7 @@ import androidx.compose.material.icons.automirrored.rounded.VolumeOff
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.Cast
 import androidx.compose.material.icons.rounded.CastConnected
+import androidx.compose.material.icons.rounded.LinkOff
 import androidx.compose.material.icons.rounded.Speaker
 import androidx.compose.material.icons.rounded.SpeakerGroup
 import androidx.compose.material.icons.rounded.Tv
@@ -70,18 +71,22 @@ import androidx.compose.ui.unit.dp
 import dev.sfg.orchard.mobile.OrchardGraph
 import dev.sfg.orchard.mobile.cast.CastDevice
 import dev.sfg.orchard.mobile.cast.CastDiscovery
+import dev.sfg.orchard.mobile.cast.CastTrustStore
+import dev.sfg.orchard.mobile.cast.SharedPreferencesCastTrustStore
 import dev.sfg.orchard.mobile.playback.CastControls
 import dev.sfg.orchard.mobile.playback.CastStatus
 import dev.sfg.orchard.mobile.ui.theme.CanopyColors
 import dev.sfg.orchard.mobile.ui.theme.LocalAccent
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 /**
  * Local-network discovery owned by one picker. Nothing touches the network until [search], and
  * leaving the screen stops it (CAST-INV-3).
  */
 @Stable
-private class CastPicker(private val discovery: CastDiscovery) {
+private class CastPicker(private val discovery: CastDiscovery, val trustStore: CastTrustStore) {
     var devices by mutableStateOf<List<CastDevice>>(emptyList())
         private set
     var searching by mutableStateOf(false)
@@ -90,6 +95,22 @@ private class CastPicker(private val discovery: CastDiscovery) {
         private set
     var error by mutableStateOf<String?>(null)
         private set
+    /** Ids trusted only through a TLS pin after a failed `deviceauth` (SDD §6.2 step 5). */
+    var unauthenticated by mutableStateOf<Set<String>>(emptySet())
+        private set
+    var trustRevision by mutableStateOf(0)
+        private set
+
+    suspend fun refreshTrust(ids: List<String>) {
+        unauthenticated = withContext(Dispatchers.IO) {
+            ids.filterTo(HashSet()) { trustStore.getDeviceKeyPin(it) == null && trustStore.getLegacyPin(it) != null }
+        }
+    }
+
+    fun forget(deviceId: String) {
+        trustStore.forget(deviceId)
+        trustRevision++
+    }
 
     fun search() {
         error = null
@@ -117,7 +138,7 @@ private class CastPicker(private val discovery: CastDiscovery) {
 @Composable
 private fun rememberCastPicker(): CastPicker {
     val context = LocalContext.current
-    val picker = remember { CastPicker(CastDiscovery(context)) }
+    val picker = remember { CastPicker(CastDiscovery(context), SharedPreferencesCastTrustStore(context)) }
     DisposableEffect(picker) { onDispose { picker.stop() } }
     LaunchedEffect(picker.searching) {
         while (picker.searching) {
@@ -145,6 +166,12 @@ private fun CastPanel(modifier: Modifier = Modifier) {
     val controls = OrchardGraph.from(LocalContext.current).cast
     val status by controls.status.collectAsState()
     val picker = rememberCastPicker()
+    LaunchedEffect(picker.devices, picker.trustRevision, status.connected) {
+        picker.refreshTrust(picker.devices.map { it.id })
+    }
+    status.pendingTrustPrompt?.let { prompt ->
+        CastTrustChangedDialog(prompt, onConfirm = controls::confirmDeviceTrust, onCancel = controls::cancelDeviceTrust)
+    }
 
     Column(modifier.fillMaxWidth()) {
         CastHeader(status, picker, controls)
@@ -240,7 +267,14 @@ private fun CastDeviceList(picker: CastPicker, controls: CastControls) {
     }
     Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
         devices.forEach { device ->
-            CastDeviceRow(device) {
+            CastDeviceRow(
+                device,
+                unauthenticated = device.id in picker.unauthenticated,
+                onForget = {
+                    picker.forget(device.id)
+                    controls.forgetDevice(device.id)
+                },
+            ) {
                 picker.stop()
                 controls.connect(device)
             }
@@ -249,7 +283,12 @@ private fun CastDeviceList(picker: CastPicker, controls: CastControls) {
 }
 
 @Composable
-private fun CastDeviceRow(device: CastDevice, onClick: () -> Unit) {
+private fun CastDeviceRow(
+    device: CastDevice,
+    unauthenticated: Boolean,
+    onForget: () -> Unit,
+    onClick: () -> Unit,
+) {
     // clickable keeps the row in the D-Pad focus order and draws the focus highlight.
     Row(
         Modifier.fillMaxWidth()
@@ -274,15 +313,23 @@ private fun CastDeviceRow(device: CastDevice, onClick: () -> Unit) {
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            device.model?.takeIf { it.isNotBlank() }?.let { model ->
+            val detail = listOfNotNull(
+                device.model?.takeIf { it.isNotBlank() },
+                "Sin autenticación de dispositivo".takeIf { unauthenticated },
+            ).joinToString(" · ")
+            if (detail.isNotEmpty()) {
                 Text(
-                    model,
+                    detail,
                     style = MaterialTheme.typography.bodySmall,
                     color = CanopyColors.Muted,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+        }
+        // Always offered so a device whose pin no longer matches is never stuck (CAST-ROT-INV-3).
+        IconButton(onClick = onForget) {
+            Icon(Icons.Rounded.LinkOff, contentDescription = "Olvidar ${device.name}", tint = CanopyColors.Muted)
         }
     }
 }

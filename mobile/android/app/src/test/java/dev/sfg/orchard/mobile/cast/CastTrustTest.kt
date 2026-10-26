@@ -4,12 +4,12 @@
 package dev.sfg.orchard.mobile.cast
 
 import java.math.BigInteger
-import java.security.MessageDigest
 import java.security.Principal
 import java.security.PublicKey
 import java.security.cert.X509Certificate
 import java.util.Date
 import javax.security.auth.x500.X500Principal
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -19,6 +19,12 @@ import org.junit.Assert.fail
 import org.junit.Test
 
 class CastTrustTest {
+
+    private val pinDk1 = "11".repeat(32)
+    private val pinDk2 = "22".repeat(32)
+    private val tlsLeaf1 = byteArrayOf(1, 2, 3, 4)
+    private val tlsLeaf2 = byteArrayOf(5, 6, 7, 8)
+    private val tls1Hex = sha256Hex(tlsLeaf1)
 
     // --- isPrivateIp ---
 
@@ -98,82 +104,25 @@ class CastTrustTest {
         assertNull(store.getFingerprint("device-2"))
     }
 
-    // --- CastTrustManager TOFU ---
+    @Test
+    fun `in memory store migrates and forgets device key pins`() {
+        val store = InMemoryCastTrustStore()
+        store.setLegacyPin("device-1", "AA")
+        store.migrateV1ToV2("device-1", "BB")
+        assertNull(store.getLegacyPin("device-1"))
+        assertEquals("BB", store.getDeviceKeyPin("device-1"))
+        store.forget("device-1")
+        assertNull(store.getDeviceKeyPin("device-1"))
+    }
+
+    // --- CastTrustManager captures the leaf ---
 
     @Test
-    fun `first use stores certificate fingerprint`() {
-        val store = InMemoryCastTrustStore()
-        val manager = CastTrustManager("device-1", store)
+    fun `checkServerTrusted captures the leaf DER`() {
+        val manager = CastTrustManager("device-1", InMemoryCastTrustStore())
         val certificate = FakeX509Certificate(byteArrayOf(1, 2, 3, 4), 1L, "CN=cast-device")
-
         manager.checkServerTrusted(arrayOf(certificate), "TLS")
-
-        val stored = store.getFingerprint("device-1")
-        assertNotNull(stored)
-        assertEquals(fingerprintOf(certificate), stored)
-        assertTrue(stored!!.matches(Regex("[0-9A-F]{64}")))
-    }
-
-    @Test
-    fun `second use with same certificate passes`() {
-        val store = InMemoryCastTrustStore()
-        val manager = CastTrustManager("device-1", store)
-        val certificate = FakeX509Certificate(byteArrayOf(10, 20, 30), 1L, "CN=cast-device")
-
-        manager.checkServerTrusted(arrayOf(certificate), "TLS")
-        manager.checkServerTrusted(arrayOf(certificate), "TLS")
-
-        assertEquals(fingerprintOf(certificate), store.getFingerprint("device-1"))
-    }
-
-    @Test
-    fun `second use with different certificate throws security exception`() {
-        val store = InMemoryCastTrustStore()
-        val manager = CastTrustManager("device-1", store)
-        val first = FakeX509Certificate(byteArrayOf(1, 2, 3, 4), 1L, "CN=cast-device")
-        val second = FakeX509Certificate(byteArrayOf(5, 6, 7, 8), 2L, "CN=cast-device")
-
-        manager.checkServerTrusted(arrayOf(first), "TLS")
-        try {
-            manager.checkServerTrusted(arrayOf(second), "TLS")
-            fail("expected CastSecurityException")
-        } catch (expected: CastSecurityException) {
-            assertTrue(expected.message!!.contains("mismatch"))
-        }
-    }
-
-    @Test
-    fun `pins are isolated per device id`() {
-        val store = InMemoryCastTrustStore()
-        val first = FakeX509Certificate(byteArrayOf(1, 2, 3, 4), 1L, "CN=cast-a")
-        val second = FakeX509Certificate(byteArrayOf(5, 6, 7, 8), 2L, "CN=cast-b")
-
-        CastTrustManager("device-a", store).checkServerTrusted(arrayOf(first), "TLS")
-        CastTrustManager("device-b", store).checkServerTrusted(arrayOf(second), "TLS")
-
-        assertEquals(fingerprintOf(first), store.getFingerprint("device-a"))
-        assertEquals(fingerprintOf(second), store.getFingerprint("device-b"))
-    }
-
-    @Test
-    fun `mismatch keeps the original pin`() {
-        val store = InMemoryCastTrustStore()
-        val manager = CastTrustManager("device-1", store)
-        val first = FakeX509Certificate(byteArrayOf(1, 2, 3, 4), 1L, "CN=cast-device")
-        val second = FakeX509Certificate(byteArrayOf(9, 9, 9, 9), 2L, "CN=cast-device")
-
-        manager.checkServerTrusted(arrayOf(first), "TLS")
-        try {
-            manager.checkServerTrusted(arrayOf(second), "TLS")
-            fail("expected CastSecurityException")
-        } catch (_: CastSecurityException) {
-        }
-        assertEquals(fingerprintOf(first), store.getFingerprint("device-1"))
-    }
-
-    @Test
-    fun `ssl context uses tls`() {
-        assertEquals("TLS", createSslContext("device-1", InMemoryCastTrustStore()).protocol)
+        assertArrayEquals(byteArrayOf(1, 2, 3, 4), manager.peerLeafCertificateDer)
     }
 
     @Test
@@ -187,11 +136,104 @@ class CastTrustTest {
         }
     }
 
-    private fun fingerprintOf(certificate: X509Certificate): String {
-        val digest = MessageDigest.getInstance("SHA-256").digest(certificate.encoded)
-        return digest.joinToString(separator = "") { byte ->
-            "%02X".format(byte.toInt() and 0xff)
+    // --- evaluateDeviceAuth: the five rows of SDD-castv2-tofu-rotation.md section 6.2 ---
+
+    @Test
+    fun `matching device key pin accepts without writing`() {
+        val store = InMemoryCastTrustStore()
+        store.setDeviceKeyPin("d1", pinDk1)
+        evaluateDeviceAuth("d1", store, tlsLeaf2, CastDeviceAuthResult.Verified(pinDk1))
+        assertEquals(pinDk1, store.getDeviceKeyPin("d1"))
+        assertNull(store.getLegacyPin("d1"))
+    }
+
+    @Test
+    fun `changed device key pin throws and does not write`() {
+        val store = InMemoryCastTrustStore()
+        store.setDeviceKeyPin("d1", pinDk1)
+        try {
+            evaluateDeviceAuth("d1", store, tlsLeaf1, CastDeviceAuthResult.Verified(pinDk2))
+            fail("expected CastDeviceKeyChangedException")
+        } catch (expected: CastDeviceKeyChangedException) {
+            assertEquals(shortPin(pinDk1), expected.previousPinShort)
+            assertEquals(shortPin(pinDk2), expected.newPinShort)
         }
+        assertEquals(pinDk1, store.getDeviceKeyPin("d1"))
+    }
+
+    @Test
+    fun `legacy pin with matching TLS migrates to device key pin`() {
+        val store = InMemoryCastTrustStore()
+        store.setLegacyPin("d1", tls1Hex)
+        evaluateDeviceAuth("d1", store, tlsLeaf1, CastDeviceAuthResult.Verified(pinDk1))
+        assertEquals(pinDk1, store.getDeviceKeyPin("d1"))
+        assertNull(store.getLegacyPin("d1"))
+    }
+
+    @Test
+    fun `legacy pin with rotated TLS migrates without blocking`() {
+        val store = InMemoryCastTrustStore()
+        store.setLegacyPin("d1", tls1Hex)
+        evaluateDeviceAuth("d1", store, tlsLeaf2, CastDeviceAuthResult.Verified(pinDk1))
+        assertEquals(pinDk1, store.getDeviceKeyPin("d1"))
+        assertNull(store.getLegacyPin("d1"))
+    }
+
+    @Test
+    fun `first use stores the device key pin`() {
+        val store = InMemoryCastTrustStore()
+        evaluateDeviceAuth("d1", store, tlsLeaf1, CastDeviceAuthResult.Verified(pinDk1))
+        assertEquals(pinDk1, store.getDeviceKeyPin("d1"))
+        assertNull(store.getLegacyPin("d1"))
+    }
+
+    // --- evaluateDeviceAuth: failure path (section 6.2 step 5) ---
+
+    @Test
+    fun `deviceauth failure with a device key pin throws auth failed without writing`() {
+        val store = InMemoryCastTrustStore()
+        store.setDeviceKeyPin("d1", pinDk1)
+        store.setLegacyPin("d1", tls1Hex)
+        try {
+            evaluateDeviceAuth("d1", store, tlsLeaf1, CastDeviceAuthResult.Failed("bad signature"))
+            fail("expected CastDeviceAuthFailedException")
+        } catch (expected: CastDeviceAuthFailedException) {
+            assertEquals("bad signature", expected.reason)
+        }
+        assertEquals(pinDk1, store.getDeviceKeyPin("d1"))
+        assertEquals(tls1Hex, store.getLegacyPin("d1"))
+    }
+
+    @Test
+    fun `deviceauth failure with matching legacy pin accepts`() {
+        val store = InMemoryCastTrustStore()
+        store.setLegacyPin("d1", tls1Hex)
+        evaluateDeviceAuth("d1", store, tlsLeaf1, CastDeviceAuthResult.Failed("bad signature"))
+        assertEquals(tls1Hex, store.getLegacyPin("d1"))
+        assertNull(store.getDeviceKeyPin("d1"))
+    }
+
+    @Test
+    fun `deviceauth failure without pins throws auth failed`() {
+        val store = InMemoryCastTrustStore()
+        try {
+            evaluateDeviceAuth("d1", store, tlsLeaf1, CastDeviceAuthResult.Failed("bad signature"))
+            fail("expected CastDeviceAuthFailedException")
+        } catch (expected: CastDeviceAuthFailedException) {
+            assertEquals("bad signature", expected.reason)
+        }
+    }
+
+    @Test
+    fun `legacy fallback records the current TLS pin`() {
+        val store = InMemoryCastTrustStore()
+        recordLegacyPinFallback("d1", store, tlsLeaf1)
+        assertEquals(tls1Hex, store.getLegacyPin("d1"))
+    }
+
+    @Test
+    fun `ssl context uses tls`() {
+        assertEquals("TLS", createSslContext("device-1", InMemoryCastTrustStore()).protocol)
     }
 }
 

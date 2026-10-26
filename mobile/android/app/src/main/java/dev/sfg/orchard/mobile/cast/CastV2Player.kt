@@ -407,7 +407,6 @@ class CastV2Player(
     }
 
     private fun send(command: () -> CompletableFuture<CastMediaStatus>) = send(command, null)
-
     private fun send(
         command: () -> CompletableFuture<CastMediaStatus>,
         onResult: ((CastMediaStatus?, Throwable?) -> Unit)? = null,
@@ -461,7 +460,6 @@ class CastV2Player(
     private companion object {
         const val MAX_DEVICE_VOLUME = 20
         const val DEFAULT_AUDIO_MIME_TYPE = "audio/webm"
-
         val DEVICE_INFO: DeviceInfo = DeviceInfo.Builder(DeviceInfo.PLAYBACK_TYPE_REMOTE)
             .setMinVolume(0)
             .setMaxVolume(MAX_DEVICE_VOLUME)

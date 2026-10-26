@@ -6,7 +6,7 @@ package dev.sfg.orchard.mobile.cast
 
 import java.io.ByteArrayOutputStream
 
-/** Cast V2 payload types. STRING carries JSON; BINARY is parsed for completeness and ignored by callers. */
+/** Cast V2 payload types. STRING carries JSON; BINARY carries protobuf frames for deviceauth. */
 enum class CastPayloadType(val value: Int) {
     STRING(0),
     BINARY(1);
@@ -34,6 +34,23 @@ data class CastMessage(
     val payloadBinary: ByteArray? = null,
 )
 
+/**
+ * Builds a BINARY CastMessage for the `deviceauth` channel so callers do not have to
+ * remember to set `payloadType = BINARY` and `payloadBinary` by hand.
+ */
+fun binaryMessage(
+    namespace: String,
+    payload: ByteArray,
+    sourceId: String = CastMessageCodec.SENDER_ID,
+    destinationId: String = CastMessageCodec.RECEIVER_ID,
+): CastMessage = CastMessage(
+    sourceId = sourceId,
+    destinationId = destinationId,
+    namespace = namespace,
+    payloadType = CastPayloadType.BINARY,
+    payloadBinary = payload,
+)
+
 /** Hand-rolled proto2 wire codec and 4-byte big-endian frame framing. */
 object CastMessageCodec {
     const val PROTOCOL_VERSION = 0
@@ -42,6 +59,7 @@ object CastMessageCodec {
     const val RECEIVER_ID = "receiver-0"
     const val NAMESPACE_CONNECTION = "urn:x-cast:com.google.cast.tp.connection"
     const val NAMESPACE_HEARTBEAT = "urn:x-cast:com.google.cast.tp.heartbeat"
+    const val NAMESPACE_DEVICEAUTH = "urn:x-cast:com.google.cast.tp.deviceauth"
 
     fun encode(message: CastMessage): ByteArray {
         val out = ByteArrayOutputStream()

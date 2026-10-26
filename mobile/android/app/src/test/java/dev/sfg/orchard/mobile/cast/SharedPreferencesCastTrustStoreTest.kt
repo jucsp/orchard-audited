@@ -30,8 +30,10 @@ class SharedPreferencesCastTrustStoreTest {
 
         override fun edit(): SharedPreferences.Editor = object : SharedPreferences.Editor {
             private val pending = HashMap<String, Any?>()
+            private val removed = HashSet<String>()
             override fun putString(key: String, value: String?): SharedPreferences.Editor {
                 pending[key] = value
+                removed.remove(key)
                 return this
             }
             override fun putStringSet(key: String, values: Set<String>?) = this
@@ -39,10 +41,19 @@ class SharedPreferencesCastTrustStoreTest {
             override fun putLong(key: String, value: Long) = this
             override fun putFloat(key: String, value: Float) = this
             override fun putBoolean(key: String, value: Boolean) = this
-            override fun remove(key: String) = this
-            override fun clear() = this
+            override fun remove(key: String): SharedPreferences.Editor {
+                removed.add(key)
+                pending.remove(key)
+                return this
+            }
+            override fun clear(): SharedPreferences.Editor {
+                removed.addAll(values.keys)
+                pending.clear()
+                return this
+            }
             override fun commit(): Boolean {
                 values.putAll(pending)
+                for (key in removed) values.remove(key)
                 commits++
                 return true
             }
@@ -59,6 +70,11 @@ class SharedPreferencesCastTrustStoreTest {
             opened += name
             return prefs
         }
+    }
+
+    private fun newStore(): Pair<MemoryPrefs, SharedPreferencesCastTrustStore> {
+        val prefs = MemoryPrefs()
+        return prefs to SharedPreferencesCastTrustStore(PrefsContext(prefs))
     }
 
     @Test
@@ -88,19 +104,67 @@ class SharedPreferencesCastTrustStoreTest {
     }
 
     @Test
-    fun pinFromAPreviousRunRejectsADifferentCertificate() {
-        val context = PrefsContext(MemoryPrefs())
-        val first = FakeX509Certificate(byteArrayOf(1, 2, 3, 4), 1L, "CN=cast-device")
-        val second = FakeX509Certificate(byteArrayOf(5, 6, 7, 8), 2L, "CN=cast-device")
-        CastTrustManager("device-a", SharedPreferencesCastTrustStore(context)).checkServerTrusted(arrayOf(first), "TLS")
+    fun migrateV1ToV2WritesDeviceKeyAndDropsLegacyInOneCommit() {
+        val (prefs, store) = newStore()
+        store.setFingerprint("device-a", "AB12")
+        val before = prefs.commits
 
-        val afterRestart = CastTrustManager("device-a", SharedPreferencesCastTrustStore(context))
-        afterRestart.checkServerTrusted(arrayOf(first), "TLS")
+        store.migrateV1ToV2("device-a", "PIN-DK")
+
+        assertEquals("PIN-DK", prefs.values["dk:device-a"])
+        assertTrue("device-a" !in prefs.values)
+        assertEquals(before + 1, prefs.commits)
+    }
+
+    @Test
+    fun forgetRemovesLegacyAndDeviceKeyInOneCommit() {
+        val (prefs, store) = newStore()
+        store.setFingerprint("device-a", "AB12")
+        store.setDeviceKeyPin("device-a", "PIN-DK")
+        val before = prefs.commits
+
+        store.forget("device-a")
+
+        assertTrue("device-a" !in prefs.values)
+        assertTrue("dk:device-a" !in prefs.values)
+        assertEquals(before + 1, prefs.commits)
+    }
+
+    @Test
+    fun evaluateDeviceAuthPromotesLegacyPinThroughSharedPreferences() {
+        val (prefs, store) = newStore()
+        store.setFingerprint("device-a", "AB12")
+
+        evaluateDeviceAuth("device-a", store, byteArrayOf(1, 2, 3, 4), CastDeviceAuthResult.Verified("PIN-DK"))
+
+        assertEquals("PIN-DK", prefs.values["dk:device-a"])
+        assertTrue("device-a" !in prefs.values)
+    }
+
+    @Test
+    fun evaluateDeviceAuthChangedKeyThrowsAndKeepsPin() {
+        val (prefs, store) = newStore()
+        store.setDeviceKeyPin("device-a", "PIN-OLD")
+
         try {
-            afterRestart.checkServerTrusted(arrayOf(second), "TLS")
-            fail("expected CastSecurityException")
-        } catch (expected: CastSecurityException) {
-            assertTrue(expected.message!!.contains("mismatch"))
+            evaluateDeviceAuth("device-a", store, byteArrayOf(1), CastDeviceAuthResult.Verified("PIN-NEW"))
+            fail("expected CastDeviceKeyChangedException")
+        } catch (expected: CastDeviceKeyChangedException) {
+            assertEquals(shortPin("PIN-OLD"), expected.previousPinShort)
+            assertEquals(shortPin("PIN-NEW"), expected.newPinShort)
+        }
+        assertEquals("PIN-OLD", prefs.values["dk:device-a"])
+    }
+
+    @Test
+    fun evaluateDeviceAuthFailureWithoutPinsThrows() {
+        val (_, store) = newStore()
+
+        try {
+            evaluateDeviceAuth("device-a", store, byteArrayOf(1), CastDeviceAuthResult.Failed("bad signature"))
+            fail("expected CastDeviceAuthFailedException")
+        } catch (expected: CastDeviceAuthFailedException) {
+            assertEquals("bad signature", expected.reason)
         }
     }
 }

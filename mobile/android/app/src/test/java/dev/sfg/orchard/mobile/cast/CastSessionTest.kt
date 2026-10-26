@@ -9,7 +9,9 @@ package dev.sfg.orchard.mobile.cast
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 import java.util.concurrent.CopyOnWriteArrayList
 
@@ -283,6 +285,119 @@ class CastSessionTest {
         receiver.error?.let { throw AssertionError("Receiver script failed", it) }
     }
 
+    @Test
+    fun `deviceauth challenge is verified before receiver CONNECT`() {
+        val keyPair = CastCryptoTestSupport.rsaKeyPair()
+        val tlsLeaf = CastCryptoTestSupport.tlsLeafDer(1)
+        val receiver = FakeCastReceiver()
+        val receiverThread = script(receiver) {
+            receiver.accept()
+            val challenge = receiver.readMessage()!!
+            assertEquals(CastDeviceAuth.NAMESPACE, challenge.namespace)
+            assertEquals(CastPayloadType.BINARY, challenge.payloadType)
+            val nonce = DeviceAuthCodec.decode(challenge.payloadBinary!!).challenge?.senderNonce ?: ByteArray(0)
+            receiver.sendMessage(
+                binaryMessage(CastDeviceAuth.NAMESPACE, CastCryptoTestSupport.buildAuthResponse(keyPair, nonce, tlsLeaf))
+            )
+
+            val connect = receiver.readMessage()!!
+            assertEquals(CastSession.NS_CONNECTION, connect.namespace)
+            assertEquals("receiver-0", connect.destinationId)
+
+            val getStatus = receiver.readMessage()!!
+            val req = requestIdOf(getStatus.payloadUtf8!!)
+            receiver.sendMessage(
+                receiverMessage(
+                    "sender-0",
+                    CastSession.NS_RECEIVER,
+                    receiverStatus(req, apps = listOf(appJson("CC1AD845", "session-dev", "transport-dev")))
+                )
+            )
+            receiver.readMessage() // CONNECT to transport-dev
+        }
+        val session = sessionFor(receiver, peerLeafCertificateDer = tlsLeaf)
+        try {
+            session.connectAndLaunch()
+            assertEquals(CastSessionState.READY, session.state)
+            assertEquals("session-dev", session.sessionId)
+            assertEquals("transport-dev", session.transportId)
+        } finally {
+            receiverThread.join(2000)
+            session.close()
+            receiver.close()
+        }
+        receiver.error?.let { throw AssertionError("Receiver script failed", it) }
+    }
+
+    @Test
+    fun `deviceauth failure aborts and closes the channel`() {
+        val receiver = FakeCastReceiver()
+        val receiverThread = script(receiver) {
+            receiver.accept()
+            // The session closes the socket on failure; EOF also proves no CONNECT was sent.
+            assertNull(runCatching { receiver.readMessage(500) }.getOrNull())
+        }
+        val session = sessionFor(receiver, authenticator = { throw CastDeviceAuthFailedException("test failure") })
+        try {
+            session.connectAndLaunch()
+            fail("expected CastDeviceAuthFailedException")
+        } catch (expected: CastDeviceAuthFailedException) {
+            assertEquals("test failure", expected.reason)
+        } finally {
+            receiverThread.join(2000)
+            session.close()
+            receiver.close()
+        }
+        receiver.error?.let { throw AssertionError("Receiver script failed", it) }
+    }
+
+    @Test
+    fun `device key changed propagates CastDeviceKeyChangedException`() {
+        val receiver = FakeCastReceiver()
+        val receiverThread = script(receiver) {
+            receiver.accept()
+            // The session closes the socket on failure; EOF also proves no CONNECT was sent.
+            assertNull(runCatching { receiver.readMessage(500) }.getOrNull())
+        }
+        val session = sessionFor(receiver, authenticator = { throw CastDeviceKeyChangedException("AABBCCDD", "11223344") })
+        try {
+            session.connectAndLaunch()
+            fail("expected CastDeviceKeyChangedException")
+        } catch (expected: CastDeviceKeyChangedException) {
+            assertEquals("AABBCCDD", expected.previousPinShort)
+            assertEquals("11223344", expected.newPinShort)
+        } finally {
+            receiverThread.join(2000)
+            session.close()
+            receiver.close()
+        }
+        receiver.error?.let { throw AssertionError("Receiver script failed", it) }
+    }
+
+    @Test
+    fun `deviceauth without response times out and fails`() {
+        val tlsLeaf = CastCryptoTestSupport.tlsLeafDer(1)
+        val receiver = FakeCastReceiver()
+        val receiverThread = script(receiver) {
+            receiver.accept()
+            val challenge = receiver.readMessage()!!
+            assertEquals(CastDeviceAuth.NAMESPACE, challenge.namespace)
+            // Stay silent to force the deviceauth timeout.
+        }
+        val session = sessionFor(receiver, peerLeafCertificateDer = tlsLeaf, deviceAuthTimeoutMs = 200)
+        try {
+            session.connectAndLaunch()
+            fail("expected CastDeviceAuthFailedException")
+        } catch (expected: CastDeviceAuthFailedException) {
+            // expected
+        } finally {
+            receiverThread.join(2000)
+            session.close()
+            receiver.close()
+        }
+        receiver.error?.let { throw AssertionError("Receiver script failed", it) }
+    }
+
     private fun assertEndsSession(trigger: (FakeCastReceiver) -> Unit) {
         val receiver = FakeCastReceiver()
         val receiverThread = script(receiver) {
@@ -315,9 +430,19 @@ class CastSessionTest {
     private fun sessionFor(
         receiver: FakeCastReceiver,
         heartbeatIntervalMs: Long = 5000,
-        heartbeatTimeoutMs: Long = 15000
+        heartbeatTimeoutMs: Long = 15000,
+        peerLeafCertificateDer: ByteArray? = null,
+        deviceAuthTimeoutMs: Long = CastSession.DEVICEAUTH_TIMEOUT_MS,
+        authenticator: ((CastChannel) -> Unit)? = null,
     ): CastSession {
         val channel = CastChannel("10.0.0.8", receiver.port, "test-device", InMemoryCastTrustStore(), receiver.connectedSocketFactory())
-        return CastSession(channel, heartbeatIntervalMs = heartbeatIntervalMs, heartbeatTimeoutMs = heartbeatTimeoutMs)
+        channel.peerLeafCertificateDer = peerLeafCertificateDer
+        return CastSession(
+            channel,
+            heartbeatIntervalMs = heartbeatIntervalMs,
+            heartbeatTimeoutMs = heartbeatTimeoutMs,
+            authenticator = authenticator,
+            deviceAuthTimeoutMs = deviceAuthTimeoutMs,
+        )
     }
 }

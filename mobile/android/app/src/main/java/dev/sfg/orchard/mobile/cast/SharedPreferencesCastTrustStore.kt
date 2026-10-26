@@ -25,6 +25,29 @@ class SharedPreferencesCastTrustStore(context: Context) : CastTrustStore {
         prefs.edit().putString(deviceId, sha256Fingerprint).commit()
     }
 
+    override fun getDeviceKeyPin(deviceId: String): String? = prefs.getString(deviceKey(deviceId), null)
+
+    override fun setDeviceKeyPin(deviceId: String, pinDk: String) {
+        prefs.edit().putString(deviceKey(deviceId), pinDk).commit()
+    }
+
+    override fun migrateV1ToV2(deviceId: String, pinDk: String) {
+        // Single synchronous Editor: atomic promotion and v1 removal (CAST-ROT-INV-7).
+        prefs.edit()
+            .putString(deviceKey(deviceId), pinDk)
+            .remove(deviceId)
+            .commit()
+    }
+
+    override fun forget(deviceId: String) {
+        prefs.edit()
+            .remove(deviceKey(deviceId))
+            .remove(deviceId)
+            .commit()
+    }
+
+    private fun deviceKey(deviceId: String): String = "dk:$deviceId"
+
     companion object {
         const val PREFS_NAME = "orchard_cast_tofu_pins"
     }

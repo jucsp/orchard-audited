@@ -7,11 +7,13 @@
  */
 package dev.sfg.orchard.mobile.cast
 
+import java.net.Inet4Address
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
@@ -40,7 +42,9 @@ data class CastApplication(
 class CastSession(
     val channel: CastChannel,
     private val heartbeatIntervalMs: Long = 5000L,
-    private val heartbeatTimeoutMs: Long = 15000L
+    private val heartbeatTimeoutMs: Long = 15000L,
+    private val authenticator: ((CastChannel) -> Unit)? = null,
+    private val deviceAuthTimeoutMs: Long = DEVICEAUTH_TIMEOUT_MS,
 ) : AutoCloseable {
 
     companion object {
@@ -50,6 +54,7 @@ class CastSession(
         const val APP_ID_DEFAULT_MEDIA_RECEIVER = "CC1AD845"
         const val SENDER_ID = "sender-0"
         const val RECEIVER_ID = "receiver-0"
+        const val DEVICEAUTH_TIMEOUT_MS = 5000L
     }
 
     private val launchTimeoutMs: Long = 30000L
@@ -65,6 +70,7 @@ class CastSession(
 
     @Volatile private var heartbeatFuture: ScheduledFuture<*>? = null
     @Volatile private var activeChannel: CastChannel = channel
+    @Volatile private var initialAddress: Inet4Address? = null
 
     @Volatile var state: CastSessionState = CastSessionState.DISCONNECTED
         private set
@@ -161,6 +167,8 @@ class CastSession(
         ch.onClose = { handleChannelClosed() }
         ch.addMessageListener(::onInboundBroadcast)
         ch.open()
+        recordInitialAddress(ch)
+        (authenticator ?: ::authenticateDevice).invoke(ch)
         lastInboundAt.set(nowMillis())
         setState(CastSessionState.CONNECTED)
 
@@ -196,6 +204,50 @@ class CastSession(
         // An inbound CLOSE or invalid frame may have ended the session while launching.
         if (!transition(setOf(CastSessionState.CONNECTED, CastSessionState.LAUNCHING), CastSessionState.READY)) {
             throw CastProtocolException("Session ended before reaching READY")
+        }
+    }
+
+    /** `deviceauth` before CONNECT (CAST-ROT-INV-1/2/5); only injected test transports may skip it. */
+    private fun authenticateDevice(ch: CastChannel) {
+        val tlsLeafDer = ch.peerLeafCertificateDer
+            ?: if (ch.socketFactory == null) throw CastDeviceAuthFailedException("TLS leaf unavailable") else return
+        val nonce = CastDeviceAuth.generateNonce()
+        val responseFuture = CompletableFuture<CastMessage>()
+        val listener: (CastMessage) -> Unit = { message ->
+            if (message.namespace == CastDeviceAuth.NAMESPACE && !responseFuture.isDone) {
+                responseFuture.complete(message)
+            }
+        }
+        ch.addMessageListener(listener)
+        try {
+            ch.send(binaryMessage(CastDeviceAuth.NAMESPACE, CastDeviceAuth.buildChallenge(nonce)))
+            val response = responseFuture.get(deviceAuthTimeoutMs, TimeUnit.MILLISECONDS)
+            val result = try {
+                val pinDk = CastDeviceAuth.verifyAuthResponse(
+                    response.payloadBinary ?: ByteArray(0),
+                    nonce,
+                    tlsLeafDer,
+                )
+                CastDeviceAuthResult.Verified(pinDk)
+            } catch (e: CastDeviceAuthException) {
+                CastDeviceAuthResult.Failed(e.message ?: "deviceauth verification failed")
+            }
+            evaluateDeviceAuth(ch.deviceId, ch.trustStore, tlsLeafDer, result)
+        } catch (e: CastSecurityException) {
+            throw e
+        } catch (e: Exception) {
+            val reason = if (e is TimeoutException) "no deviceauth response" else "deviceauth failed"
+            evaluateDeviceAuth(ch.deviceId, ch.trustStore, tlsLeafDer, CastDeviceAuthResult.Failed(reason))
+        } finally {
+            ch.removeMessageListener(listener)
+        }
+    }
+
+    /** Captures the validated private IPv4 address of the first connection (CAST-ROT-INV-9). */
+    private fun recordInitialAddress(ch: CastChannel) {
+        if (initialAddress == null) {
+            initialAddress = parsePrivateIpv4(ch.host)
+                ?: throw CastSecurityException("Non-private address rejected: ${ch.host}")
         }
     }
 
@@ -296,6 +348,11 @@ class CastSession(
 
     private fun reconnect() {
         if (closing.get()) return
+        val currentAddress = parsePrivateIpv4(activeChannel.host)
+        if (currentAddress == null || currentAddress != initialAddress) {
+            terminate()
+            return
+        }
         val old = activeChannel
         val next = newChannel()
         old.onClose = null

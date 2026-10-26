@@ -30,6 +30,8 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import dev.sfg.orchard.mobile.cast.CastChannel
 import dev.sfg.orchard.mobile.cast.CastDevice
+import dev.sfg.orchard.mobile.cast.CastDeviceAuthFailedException
+import dev.sfg.orchard.mobile.cast.CastDeviceKeyChangedException
 import dev.sfg.orchard.mobile.cast.CastDeviceVolume
 import dev.sfg.orchard.mobile.cast.CastMediaChannel
 import dev.sfg.orchard.mobile.cast.CastSecurityException
@@ -37,6 +39,7 @@ import dev.sfg.orchard.mobile.cast.CastSession
 import dev.sfg.orchard.mobile.cast.CastSessionState
 import dev.sfg.orchard.mobile.cast.CastTrustStore
 import dev.sfg.orchard.mobile.cast.CastV2Player
+import dev.sfg.orchard.mobile.cast.recordLegacyPinFallback
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
@@ -77,6 +80,16 @@ class ChromecastPlayback(
     private var connection: Connection? = null
     private var closed = false
 
+    private data class PendingTrust(
+        val device: CastDevice,
+        val tlsLeafDer: ByteArray?,
+        val isDeviceKey: Boolean,
+    )
+
+    // Written on the io thread by failConnect, read on the main thread by the dialog actions.
+    @Volatile
+    private var pendingTrust: PendingTrust? = null
+
     var isConnecting: Boolean = false
         private set
 
@@ -90,6 +103,7 @@ class ChromecastPlayback(
         onStarted: (Player) -> Unit,
         onEnded: (Player) -> Unit,
         onError: (String) -> Unit,
+        onTrustPrompt: (CastTrustPrompt) -> Unit = {},
     ) {
         if (closed || isConnecting || connection != null) {
             onError("Disconnect the current Cast device first")
@@ -110,7 +124,7 @@ class ChromecastPlayback(
                 session.connectAndLaunch()
             } catch (error: Exception) {
                 teardown(null, session, channel, streamServer, stopReceiver = false)
-                failConnect(error, onError)
+                failConnect(error, onError, device, channel, onTrustPrompt)
                 return@execute
             }
             val mediaChannel = CastMediaChannel(session)
@@ -234,13 +248,59 @@ class ChromecastPlayback(
         io.shutdown()
     }
 
-    private fun failConnect(error: Exception, onError: (String) -> Unit) {
+    /** Applies the user's trust decision for the pending prompt and clears it. */
+    fun confirmDeviceTrust() {
+        val pending = pendingTrust ?: return
+        pendingTrust = null
+        // Either way the old pins go: a changed key re-pins on first use, a failed deviceauth
+        // falls back to a v1 pin of the current TLS leaf (SDD-castv2-tofu-rotation §6.2 step 5).
+        trustStore.forget(pending.device.id)
+        if (!pending.isDeviceKey) {
+            pending.tlsLeafDer?.let { recordLegacyPinFallback(pending.device.id, trustStore, it) }
+        }
+    }
+
+    /** Drops the pending prompt without changing any pin (CAST-ROT-INV-3). */
+    fun cancelDeviceTrust() {
+        pendingTrust = null
+    }
+
+    /** Removes every pin for a device so the next connection is first use again. */
+    fun forgetDeviceTrust(deviceId: String) {
+        trustStore.forget(deviceId)
+        if (pendingTrust?.device?.id == deviceId) pendingTrust = null
+    }
+
+    private fun failConnect(
+        error: Exception,
+        onError: (String) -> Unit,
+        device: CastDevice? = null,
+        channel: CastChannel? = null,
+        onTrustPrompt: (CastTrustPrompt) -> Unit = {},
+    ) {
         // CAST-INV-6: exception messages can carry the device id, so only the type is logged.
         Log.w(TAG, "Could not connect to Cast device: ${error.javaClass.simpleName}")
+        val prompt = device?.let { trustPromptFor(it, error) }
+        if (prompt != null) {
+            pendingTrust = PendingTrust(prompt.device, channel?.peerLeafCertificateDer, prompt.isDeviceKey)
+        }
         main.post {
             isConnecting = false
-            onError(messageFor(error))
+            if (prompt != null) onTrustPrompt(prompt) else onError(messageFor(error))
         }
+    }
+
+    private fun trustPromptFor(device: CastDevice, error: Throwable): CastTrustPrompt? {
+        val causes = generateSequence(error) { it.cause }.toList()
+        val keyChanged = causes.filterIsInstance<CastDeviceKeyChangedException>().firstOrNull()
+        if (keyChanged != null) {
+            return CastTrustPrompt(device, keyChanged.previousPinShort, keyChanged.newPinShort, isDeviceKey = true)
+        }
+        val authFailed = causes.filterIsInstance<CastDeviceAuthFailedException>().firstOrNull()
+        if (authFailed != null) {
+            return CastTrustPrompt(device, null, null, isDeviceKey = false, reason = authFailed.reason)
+        }
+        return null
     }
 
     private fun teardown(
@@ -261,11 +321,14 @@ class ChromecastPlayback(
 
     private fun messageFor(error: Throwable): String {
         val causes = generateSequence(error) { it.cause }.toList()
-        val security = causes.firstOrNull { it is CastSecurityException }
         return when {
-            security?.message?.contains("mismatch") == true ->
+            causes.any { it is CastDeviceKeyChangedException } ->
+                "This Cast device's identity changed. Re-trust it to continue"
+            causes.any { it is CastDeviceAuthFailedException } ->
+                "This Cast device could not be authenticated"
+            causes.firstOrNull { it is CastSecurityException }?.message?.contains("mismatch") == true ->
                 "This Cast device presented a different certificate. Connection aborted"
-            security != null -> "This Cast device is not on a private local network"
+            causes.any { it is CastSecurityException } -> "This Cast device is not on a private local network"
             causes.any { it is TimeoutException } -> "The Cast device did not respond"
             else -> "Could not connect to the Cast device"
         }
