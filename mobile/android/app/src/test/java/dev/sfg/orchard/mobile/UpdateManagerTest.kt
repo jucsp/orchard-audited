@@ -20,6 +20,9 @@
 package dev.sfg.orchard.mobile
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class UpdateManagerTest {
@@ -348,5 +351,116 @@ class UpdateManagerTest {
         assertEquals("https://github.com/downloads/${UpdateManager.TV_APK}", metadata?.apkUrl)
         assertEquals("tvhash", metadata?.sha256)
         assertEquals(listOf("https://github.com/downloads/latest-android.json"), requested)
+    }
+
+    private fun manifest(version: String, versionCode: Int = 0) =
+        MobileUpdateMetadata(version = version, versionCode = versionCode)
+
+    @Test
+    fun comparesAuditedBuildsByTheirTrailingCounter() {
+        assertEquals(1, UpdateManager.compareVersions("2.0.0-beta.9.audited.28", "2.0.0-beta.9.audited.27"))
+        assertEquals(0, UpdateManager.compareVersions("2.0.0-beta.9.audited.28", "2.0.0-beta.9.audited.28"))
+        assertEquals(-1, UpdateManager.compareVersions("2.0.0-beta.9.audited.27", "2.0.0-beta.9.audited.28"))
+        // The audited counter outranks the bare beta it was cut from...
+        assertEquals(1, UpdateManager.compareVersions("2.0.0-beta.9.audited.1", "2.0.0-beta.9"))
+        // ...but beta.10 is newer than beta.9 whatever the audited counter says.
+        assertEquals(1, UpdateManager.compareVersions("2.0.0-beta.10.audited.1", "2.0.0-beta.9.audited.28"))
+        // A newer base version still wins over the beta suffix.
+        assertEquals(-1, UpdateManager.compareVersions("2.0.0-beta.9.audited.28", "2.0.1"))
+    }
+
+    @Test
+    fun treatsAHigherVersionCodeAsAnUpdate() {
+        assertTrue(
+            UpdateManager.isNewerRelease(
+                manifest("2.0.0-beta.9.audited.28", 20028), "2.0.0-beta.9.audited.27", 20027,
+            ),
+        )
+        // Same version string, newer code: still an update.
+        assertTrue(UpdateManager.isNewerRelease(manifest("1.0.0", 20028), "1.0.0", 20027))
+    }
+
+    @Test
+    fun doesNotOfferTheSameOrAnOlderBuild() {
+        assertFalse(
+            UpdateManager.isNewerRelease(
+                manifest("2.0.0-beta.9.audited.27", 20027), "2.0.0-beta.9.audited.28", 20028,
+            ),
+        )
+        assertFalse(
+            UpdateManager.isNewerRelease(
+                manifest("2.0.0-beta.9.audited.28", 20028), "2.0.0-beta.9.audited.28", 20028,
+            ),
+        )
+    }
+
+    @Test
+    fun fallsBackToTheVersionStringWhenEitherCodeIsMissing() {
+        // Older manifests carry no versionCode and a build with no code of its own has nothing to
+        // compare, so the version string decides in both directions.
+        assertTrue(
+            UpdateManager.isNewerRelease(
+                manifest("2.0.0-beta.9.audited.28"), "2.0.0-beta.9.audited.27", 20027,
+            ),
+        )
+        assertFalse(
+            UpdateManager.isNewerRelease(
+                manifest("2.0.0-beta.9.audited.27"), "2.0.0-beta.9.audited.28", 20028,
+            ),
+        )
+        assertTrue(
+            UpdateManager.isNewerRelease(
+                manifest("2.0.0-beta.9.audited.28", 20028), "2.0.0-beta.9.audited.27", 0,
+            ),
+        )
+        assertFalse(
+            UpdateManager.isNewerRelease(
+                manifest("2.0.0-beta.9.audited.27", 20027), "2.0.0-beta.9.audited.28", 0,
+            ),
+        )
+    }
+
+    @Test
+    fun parsesAnAuditedManifestWithItsVersionCode() {
+        val json = """
+            {
+              "version": "2.0.0-beta.9.audited.28",
+              "versionCode": 20028,
+              "apkUrl": "https://github.com/jucsp/orchard-audited/releases/download/v2.0.0-beta.9-audited.28/Orchard-Android-arm64-v8a.apk",
+              "sha256": "abc"
+            }
+        """.trimIndent()
+
+        val metadata = UpdateManager.parseUpdateMetadata(json)
+
+        assertEquals(20028, metadata.versionCode)
+        assertTrue(UpdateManager.isNewerRelease(metadata, "2.0.0-beta.9.audited.27", 20027))
+        assertFalse(UpdateManager.isNewerRelease(metadata, "2.0.0-beta.9.audited.28", 20028))
+    }
+
+    /**
+     * GitHub answers `releases/latest/download` with a 302 to release-assets.githubusercontent.com,
+     * so the Location header has to be resolved before the body can be read.
+     */
+    @Test
+    fun resolvesRedirectLocations() {
+        assertEquals(
+            "https://release-assets.githubusercontent.com/github-production-release-asset/1?token=x",
+            UpdateManager.resolveRedirectLocation(
+                "https://github.com/jucsp/orchard-audited/releases/latest/download/latest-android.json",
+                "https://release-assets.githubusercontent.com/github-production-release-asset/1?token=x",
+            ),
+        )
+        assertEquals(
+            "https://github.com/other/path.json",
+            UpdateManager.resolveRedirectLocation("https://github.com/a/b/c.json", "/other/path.json"),
+        )
+        assertEquals(
+            "https://github.com/a/d.json",
+            UpdateManager.resolveRedirectLocation("https://github.com/a/b/c.json", "d.json"),
+        )
+        assertNull(UpdateManager.resolveRedirectLocation("https://github.com/a/b.json", null))
+        assertNull(UpdateManager.resolveRedirectLocation("https://github.com/a/b.json", "   "))
+        assertEquals(5, UpdateManager.MAX_REDIRECTS)
     }
 }

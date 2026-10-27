@@ -171,3 +171,14 @@ Rama `integrate/hu-orch-19-20-21`. Contratos `SDD-android-auto.md`, `SDD-castv2-
 - **Seguridad:** canal E2EE AES-256-GCM solo LAN (PAIR-INV-1); consentimiento por servicio en el diálogo; `QobuzRepository` cifra `qobuz_token` con `AndroidKeystoreCipher` (alias `orchard_qobuz_token_v1`) y migra texto plano; `OrchardAccountProvisioning` calcula el binding desde el hash de transcripción.
 - **UI:** casillas por servicio en `PairConfirmDialog`/`PairWithTvScreen` (YouTube/Connect/Spotify/Qobuz por defecto, BYOK desmarcado), `TvPairingConfirmDialog` con foco en Cancelar y sección "Orchard Connect" en Ajustes TV.
 - **Verificación:** 84/84 tests `npm test` en `services/account`. Tests JVM de Android pendientes de CI.
+
+## 14. Corrección del actualizador Android y despliegue de Connect (audited.28)
+- **Despliegue del Worker (connect.kasper-cloud.com):** Aplicada migración D1 `0005_provision.sql` sobre `orchard-accounts` y desplegado `orchard-account` con `wrangler.production.jsonc`. Rutas `/devices/provision` y `urn:orchard:grant-type:provision` operativas en producción.
+- **Actualizador Android (`UpdateManager.kt`):**
+  - Soporte de hasta 5 saltos en redirecciones HTTP (301, 302, 303, 307, 308) en `fetchFollowingRedirects`, permitiendo que `fetchManifestAt` y la consulta de releases en GitHub sigan las redirecciones de `releases/latest/download` hacia `release-assets.githubusercontent.com`.
+  - Comparativa `isNewerRelease` que evalúa `versionCode` (obtenido con `longVersionCode` en SDK >= 28) además de la comparación de cadenas semver.
+  - Fallback a GitHub Releases API cuando los manifiestos planos de `latest/download` no respondan.
+- **Versionado Android (`build.gradle` y `release.yml`):**
+  - `build.gradle`: `versionCode` base incrementado a `20028` y `versionName` a `'2.0.0-beta.9.audited.28'`, sobreescribibles vía propiedades Gradle (`orchardVersionCode`, `orchardVersionName`).
+  - `release.yml`: extracción directa de `versionName` y `versionCode` desde el APK compilado mediante `aapt2 dump badging` para garantizar que los manifiestos `latest-android*.json` reflejen con precisión el binario publicado.
+

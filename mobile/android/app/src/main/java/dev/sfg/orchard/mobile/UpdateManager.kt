@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 SFG545
+
 package dev.sfg.orchard.mobile
 
 import android.app.DownloadManager
@@ -5,8 +8,10 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageInfo
 import android.database.Cursor
 import android.net.Uri
+import android.os.Build
 import android.os.Environment
 import android.util.Log
 import androidx.core.content.ContextCompat
@@ -67,6 +72,7 @@ class UpdateManager(
             try {
                 val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
                 val currentVersion = packageInfo.versionName
+                val currentCode = packageInfo.currentVersionCode()
 
                 val metadata: MobileUpdateMetadata? = if (isBetaEnabled()) {
                     fetchBetaUpdateMetadata()
@@ -74,7 +80,7 @@ class UpdateManager(
                     fetchStableUpdateMetadata()
                 }
 
-                if (metadata != null && compareVersions(metadata.version, currentVersion) > 0) {
+                if (metadata != null && isNewerRelease(metadata, currentVersion, currentCode)) {
                     // Surface it and let the user decide; downloading and firing the system
                     // installer unprompted is what made this feel like a random intrusion.
                     mutableState.value = UpdateState.Available(metadata)
@@ -85,9 +91,25 @@ class UpdateManager(
         }
     }
 
-    private fun fetchStableUpdateMetadata(): MobileUpdateMetadata? {
-        // A TV reads the dedicated TV manifest first and falls back to the phone manifest when it
-        // has not been published yet. Either way the manifest still has to fit this device.
+    /**
+     * The code the installed APK was built with. Reads the long form where the platform has it,
+     * because a fork that ships often can exhaust the 32-bit range.
+     */
+    private fun PackageInfo.currentVersionCode(): Int = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        longVersionCode.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+    } else {
+        @Suppress("DEPRECATION")
+        versionCode
+    }
+
+    private fun fetchStableUpdateMetadata(): MobileUpdateMetadata? =
+        fetchStableManifestMetadata() ?: fetchGitHubReleasesMetadata()
+
+    /**
+     * A TV reads the dedicated TV manifest first and falls back to the phone manifest when it has
+     * not been published yet. Either way the manifest still has to fit this device.
+     */
+    private fun fetchStableManifestMetadata(): MobileUpdateMetadata? {
         val urls = if (isTv) listOf(tvManifestUrl, phoneManifestUrl) else listOf(phoneManifestUrl)
         for (url in urls) {
             val metadata = fetchManifestAt(url)?.let(::parseUpdateMetadata)
@@ -96,36 +118,21 @@ class UpdateManager(
         return null
     }
 
-    private fun fetchManifestAt(url: String): String? = runCatching {
-        val connection = URL(url).openConnection() as HttpURLConnection
-        connection.requestMethod = "GET"
-        connection.connectTimeout = 5000
-        connection.readTimeout = 5000
+    private fun fetchManifestAt(url: String): String? = fetchFollowingRedirects(url)
 
-        if (connection.responseCode == HttpURLConnection.HTTP_OK) {
-            connection.inputStream.bufferedReader().use { it.readText() }
-        } else {
-            null
-        }
+    /**
+     * The releases listing is what a stable check falls back to when no manifest can be read: the
+     * `releases/latest/download` alias lags behind the newest release. It never calls the manifest
+     * or beta paths back, so the fallback cannot recurse.
+     */
+    private fun fetchGitHubReleasesMetadata(): MobileUpdateMetadata? = runCatching {
+        val response = fetchFollowingRedirects(githubReleasesUrl, accept = "application/vnd.github+json")
+            ?: return@runCatching null
+        parseGitHubReleasesMetadata(response, isTv)
     }.getOrNull()
 
-    private fun fetchBetaUpdateMetadata(): MobileUpdateMetadata? = runCatching {
-        val connection = URL(githubReleasesUrl).openConnection() as HttpURLConnection
-        connection.requestMethod = "GET"
-        connection.setRequestProperty("Accept", "application/vnd.github+json")
-        connection.setRequestProperty("User-Agent", "Orchard-Android")
-        connection.connectTimeout = 5000
-        connection.readTimeout = 5000
-
-        if (connection.responseCode == HttpURLConnection.HTTP_OK) {
-            val response = connection.inputStream.bufferedReader().use { it.readText() }
-            val meta = parseGitHubReleasesMetadata(response, isTv)
-            if (meta != null) return@runCatching meta
-        }
-
-        // If GitHub releases did not return beta metadata, check if there's a newer stable release.
-        fetchStableUpdateMetadata()
-    }.getOrNull()
+    private fun fetchBetaUpdateMetadata(): MobileUpdateMetadata? =
+        fetchGitHubReleasesMetadata() ?: fetchStableManifestMetadata()
 
     fun dismiss() {
         mutableState.value = UpdateState.Idle
@@ -137,6 +144,82 @@ class UpdateManager(
         const val TV_APK = "Orchard-AndroidTV-arm.apk"
         const val PHONE_MANIFEST = "latest-android.json"
         const val TV_MANIFEST = "latest-android-tv.json"
+
+        /** Redirect hops followed before giving up on a URL. */
+        const val MAX_REDIRECTS = 5
+
+        private val REDIRECT_STATUS_CODES = setOf(301, 302, 303, 307, 308)
+
+        /**
+         * Absolute URL for a redirect [location], or null when there is nothing usable to follow.
+         * Relative locations are resolved against [currentUrl], as the RFC requires.
+         */
+        fun resolveRedirectLocation(currentUrl: String, location: String?): String? {
+            val header = location?.trim().orEmpty()
+            if (header.isEmpty()) return null
+            return runCatching { URL(URL(currentUrl), header).toString() }.getOrNull()
+        }
+
+        /** One request's outcome: a body, or the redirect that has to be followed next. */
+        private class FetchAttempt(val body: String?, val redirect: String?)
+
+        /**
+         * GETs [url] and follows up to [MAX_REDIRECTS] redirects. GitHub answers the
+         * `releases/latest/download` alias with a 302 to release-assets.githubusercontent.com, so a
+         * single-shot request read the redirect instead of the manifest and reported "no update".
+         */
+        private fun fetchFollowingRedirects(url: String, accept: String? = null): String? {
+            var target = url
+            for (hop in 0..MAX_REDIRECTS) {
+                val attempt = runCatching { requestOnce(target, accept) }.getOrNull() ?: return null
+                attempt.body?.let { return it }
+                val next = attempt.redirect ?: return null
+                if (hop == MAX_REDIRECTS) return null
+                target = next
+            }
+            return null
+        }
+
+        private fun requestOnce(url: String, accept: String?): FetchAttempt {
+            val connection = URL(url).openConnection() as HttpURLConnection
+            connection.requestMethod = "GET"
+            // Followed by hand: the default follower hides that the asset host changes.
+            connection.instanceFollowRedirects = false
+            connection.connectTimeout = 5000
+            connection.readTimeout = 5000
+            connection.setRequestProperty("User-Agent", "Orchard-Android")
+            if (accept != null) connection.setRequestProperty("Accept", accept)
+            try {
+                val code = connection.responseCode
+                if (code == HttpURLConnection.HTTP_OK) {
+                    return FetchAttempt(connection.inputStream.bufferedReader().use { it.readText() }, null)
+                }
+                val redirect = if (code in REDIRECT_STATUS_CODES) {
+                    resolveRedirectLocation(url, connection.getHeaderField("Location"))
+                } else {
+                    null
+                }
+                return FetchAttempt(null, redirect)
+            } finally {
+                connection.disconnect()
+            }
+        }
+
+        /**
+         * A release is newer when its versionCode advances, or when the version string does and the
+         * codes cannot answer. Manifests written before the code was published carry 0, and a build
+         * with no code of its own has nothing to compare, so the string stays authoritative there.
+         */
+        fun isNewerRelease(
+            metadata: MobileUpdateMetadata,
+            currentVersion: String?,
+            currentVersionCode: Int,
+        ): Boolean {
+            val newerCode = metadata.versionCode > 0 &&
+                currentVersionCode > 0 &&
+                metadata.versionCode > currentVersionCode
+            return newerCode || compareVersions(metadata.version, currentVersion) > 0
+        }
 
         /** A manifest names one APK; a TV only takes it when that APK is the TV build. */
         fun manifestFitsDevice(metadata: MobileUpdateMetadata, isTv: Boolean): Boolean =
@@ -172,17 +255,7 @@ class UpdateManager(
         fun parseGitHubReleasesMetadata(
             releasesJson: String,
             isTv: Boolean = false,
-            fetchManifest: (String) -> String? = { url ->
-                runCatching {
-                    val conn = URL(url).openConnection() as HttpURLConnection
-                    conn.requestMethod = "GET"
-                    conn.connectTimeout = 5000
-                    conn.readTimeout = 5000
-                    if (conn.responseCode == HttpURLConnection.HTTP_OK) {
-                        conn.inputStream.bufferedReader().use { it.readText() }
-                    } else null
-                }.getOrNull()
-            },
+            fetchManifest: (String) -> String? = { url -> fetchFollowingRedirects(url) },
         ): MobileUpdateMetadata? {
             val array = JSONArray(releasesJson)
             for (i in 0 until array.length()) {

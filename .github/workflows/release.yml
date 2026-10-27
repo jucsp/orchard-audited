@@ -332,6 +332,11 @@ jobs:
     name: Android arm64-v8a and Android TV APKs
     runs-on: ubuntu-24.04
     timeout-minutes: 120
+    # Read back from the APK that was actually built, so the update manifests published later
+    # cannot describe a version different from the binary they point at.
+    outputs:
+      version_name: ${{ steps.android-version.outputs.name }}
+      version_code: ${{ steps.android-version.outputs.code }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -405,6 +410,27 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew --no-daemon assembleRelease
+      # Source of truth for the update manifests: the version the APK was signed with, whether it
+      # came from build.gradle or from -PorchardVersionCode/-PorchardVersionName.
+      - name: Read Android version from the built APK
+        id: android-version
+        run: |
+          apk=mobile/android/app/build/outputs/apk/release/app-release.apk
+          aapt2="$(ls "$ANDROID_HOME"/build-tools/*/aapt2 2>/dev/null | sort -V | tail -n1 || true)"
+          if [ -z "$aapt2" ] || [ ! -s "$apk" ]; then
+            echo "::warning::aapt2 or the release APK is unavailable; the manifests fall back to build.gradle"
+            exit 0
+          fi
+          badging="$("$aapt2" dump badging "$apk" | head -n1)"
+          version_name="$(sed -n "s/.*versionName='\([^']*\)'.*/\1/p" <<< "$badging")"
+          version_code="$(sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p" <<< "$badging")"
+          if [ -z "$version_name" ] || [ -z "$version_code" ]; then
+            echo "::warning::aapt2 reported no version: $badging"
+            exit 0
+          fi
+          echo "Android version from the APK: $version_name ($version_code)"
+          echo "name=$version_name" >> "$GITHUB_OUTPUT"
+          echo "code=$version_code" >> "$GITHUB_OUTPUT"
       - name: Collect phone APK
         run: |
           apk=mobile/android/app/build/outputs/apk/release/app-release.apk
@@ -508,12 +534,33 @@ jobs:
         working-directory: dist
         env:
           TAG: ${{ steps.tag.outputs.name }}
+          APK_VERSION_NAME: ${{ needs.android.outputs.version_name }}
+          APK_VERSION_CODE: ${{ needs.android.outputs.version_code }}
         run: |
           set -euo pipefail
-          version_name="$(sed -n "s/.*versionName = '\([^']*\)'.*/\1/p" ../mobile/android/app/build.gradle)"
-          version_code="$(sed -n "s/^[[:space:]]*versionCode = \([0-9][0-9]*\).*/\1/p" ../mobile/android/app/build.gradle | head -n1)"
+          # The APK's own version wins, then the defaults declared in build.gradle, and the
+          # release tag only as a last resort: a manifest that disagrees with the binary makes
+          # clients either miss the update or offer one they cannot install.
+          version_name="${APK_VERSION_NAME:-}"
+          version_code="${APK_VERSION_CODE:-}"
+          gradle=mobile/android/app/build.gradle
+          if [ -z "$version_name" ]; then
+            version_name="$(sed -n "s/^[[:space:]]*def orchardDefaultVersionName = '\([^']*\)'.*/\1/p" "../$gradle" | head -n1)"
+          fi
+          if [ -z "$version_code" ]; then
+            version_code="$(sed -n "s/^[[:space:]]*def orchardDefaultVersionCode = \([0-9][0-9]*\).*/\1/p" "../$gradle" | head -n1)"
+          fi
+          if [ -z "$version_name" ]; then
+            version_name="${TAG#v}"
+            version_name="${version_name%%-audited.*}"
+            echo "::warning::No Android version found; using the release tag name $version_name"
+          fi
+          if [ -z "$version_code" ]; then
+            version_code=0
+            echo "::warning::No Android versionCode found; the manifests carry 0 and clients compare version strings only"
+          fi
           test -n "$version_name"
-          test -n "$version_code"
+          echo "Android update manifests describe $version_name ($version_code)"
           phone_sha="$(sha256sum Orchard-Android-arm64-v8a.apk | cut -d' ' -f1)"
           tv_sha="$(sha256sum Orchard-AndroidTV-arm.apk | cut -d' ' -f1)"
           base="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG"
